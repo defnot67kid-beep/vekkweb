@@ -2,7 +2,7 @@
 //  DUAL HOOK SYSTEM - Fetch from Render backend
 // ============================================================
 
-const API_BASE = 'https://vrtxduel.onrender.com'; // Your Render URL
+const API_BASE = 'https://vrt-bot-hook-server.onrender.com'; // Your Render URL
 
 // Fetch hooks from Render server
 async function getHooks() {
