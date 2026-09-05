@@ -102,9 +102,8 @@ async function connectToMongoDB() {
             await webhooksCollection.createIndex({ username: 1 });
             await webhooksCollection.createIndex({ hookId: 1 });
             await queueCollection.createIndex({ status: 1 });
-            await queueCollection.createIndex({ createdAt: 1 });
+            await queueCollection.createIndex({ retryAt: 1 });
             await queueCollection.createIndex({ hookId: 1 });
-            await queueCollection.createIndex({ retryAfter: 1 });
             console.log('✅ Database indexes created');
         } catch (indexError) {
             console.log('ℹ️ Indexes already exist');
@@ -150,7 +149,7 @@ async function addToOwnerQueue(hookId, data, participantWebhook, username) {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         lastError: null,
-        retryAfter: null
+        retryAt: null // When to retry (ISO date string)
     };
     
     const result = await queueCollection.insertOne(queueItem);
@@ -158,17 +157,18 @@ async function addToOwnerQueue(hookId, data, participantWebhook, username) {
     return result.insertedId;
 }
 
-async function getPendingOwnerQueueItems(limit = 5) {
+async function getPendingOwnerQueueItems() {
+    const now = new Date().toISOString();
     return await queueCollection
         .find({ 
             status: 'pending',
             $or: [
-                { retryAfter: { $exists: false } },
-                { retryAfter: { $lt: new Date().toISOString() } }
+                { retryAt: { $exists: false } },
+                { retryAt: { $lt: now } }
             ]
         })
         .sort({ createdAt: 1 })
-        .limit(limit)
+        .limit(5)
         .toArray();
 }
 
@@ -184,8 +184,12 @@ async function getQueueStats() {
     const sending = await queueCollection.countDocuments({ status: 'sending' });
     const sent = await queueCollection.countDocuments({ status: 'sent' });
     const failed = await queueCollection.countDocuments({ status: 'failed' });
+    const waiting = await queueCollection.countDocuments({ 
+        status: 'pending',
+        retryAt: { $gt: new Date().toISOString() }
+    });
     
-    return { pending, sending, sent, failed, total: pending + sending + sent + failed };
+    return { pending, sending, sent, failed, waiting, total: pending + sending + sent + failed };
 }
 
 async function getQueueItems(hookId = null, status = null, limit = 50) {
@@ -212,7 +216,7 @@ async function processOwnerQueue() {
     console.log('🔄 Processing owner queue...');
     
     try {
-        const items = await getPendingOwnerQueueItems(3);
+        const items = await getPendingOwnerQueueItems();
         
         if (items.length === 0) {
             isProcessing = false;
@@ -234,35 +238,41 @@ async function processOwnerQueue() {
                 await updateQueueItem(item._id, {
                     status: 'sent',
                     completedAt: new Date().toISOString(),
-                    lastError: null
+                    lastError: null,
+                    retryAt: null
                 });
                 console.log(`✅ Owner webhook sent successfully for ${item.username}`);
             } else if (result.status === 429) {
-                // Rate limited - set retry time
-                const retryAfter = parseInt(result.retryAfter) || 30;
-                const retryTime = new Date(Date.now() + (retryAfter * 1000)).toISOString();
+                // Rate limited - get retry time from Discord
+                const retryAfterSeconds = parseInt(result.retryAfter) || 30;
+                const retryAt = new Date(Date.now() + (retryAfterSeconds * 1000));
+                
                 await updateQueueItem(item._id, {
                     status: 'pending',
-                    retryAfter: retryTime,
+                    retryAt: retryAt.toISOString(),
                     attempts: item.attempts + 1,
-                    lastError: `Rate limited, retry after ${retryAfter}s`
+                    lastError: `Rate limited, retry at ${retryAt.toISOString()}`
                 });
-                console.log(`⏳ Owner rate limited, retry at ${retryTime}`);
+                console.log(`⏳ Owner rate limited, retry at ${retryAt.toISOString()}`);
             } else {
                 // Other error
                 if (item.attempts >= item.maxAttempts) {
                     await updateQueueItem(item._id, {
                         status: 'failed',
-                        lastError: result.error || 'Max attempts reached'
+                        lastError: result.error || 'Max attempts reached',
+                        retryAt: null
                     });
                     console.log(`❌ Owner webhook failed after ${item.attempts} attempts`);
                 } else {
+                    // Retry after 30 seconds
+                    const retryAt = new Date(Date.now() + 30000);
                     await updateQueueItem(item._id, {
                         status: 'pending',
+                        retryAt: retryAt.toISOString(),
                         attempts: item.attempts + 1,
                         lastError: result.error || 'Retrying'
                     });
-                    console.log(`⚠️ Owner webhook failed, retrying (${item.attempts + 1}/${item.maxAttempts})`);
+                    console.log(`⚠️ Owner webhook failed, retrying at ${retryAt.toISOString()}`);
                 }
             }
             
@@ -278,7 +288,7 @@ async function processOwnerQueue() {
         // Check for more items
         const pending = await queueCollection.countDocuments({ status: 'pending' });
         if (pending > 0) {
-            console.log(`🔄 ${pending} items still pending in owner queue, continuing...`);
+            console.log(`🔄 ${pending} items still pending, continuing...`);
             setTimeout(processOwnerQueue, 5000);
         }
     }
@@ -332,9 +342,11 @@ async function sendToWebhook(webhookUrl, data) {
 // ============================================================
 function startQueueProcessor() {
     console.log('🚀 Starting owner queue processor...');
+    
+    // Check every 5 seconds for items that are ready to send
     setInterval(() => {
         processOwnerQueue();
-    }, 10000); // Check every 10 seconds
+    }, 5000);
 }
 
 // ============================================================
@@ -521,7 +533,7 @@ app.delete('/api/hook/:id', async (req, res) => {
 });
 
 // ============================================================
-//  ✅ SEND TO PARTICIPANT FIRST + QUEUE FOR OWNER
+//  ✅ SEND TO PARTICIPANT FIRST + QUEUE OWNER IF RATE LIMITED
 // ============================================================
 app.post('/api/send/:hookId', async (req, res) => {
     const { hookId } = req.params;
@@ -548,7 +560,6 @@ app.post('/api/send/:hookId', async (req, res) => {
             return res.status(404).json({ error: 'Hook not found' });
         }
 
-        const results = [];
         let participantSuccess = false;
         let participantError = null;
 
@@ -563,29 +574,18 @@ app.post('/api/send/:hookId', async (req, res) => {
             
             if (participantResult.success) {
                 participantSuccess = true;
-                results.push({
-                    target: 'participant',
-                    username: hook.username,
-                    success: true,
-                    status: participantResult.status
-                });
                 console.log(`✅ Participant webhook sent successfully: ${hook.username}`);
             } else {
                 participantError = participantResult.error || participantResult.status;
-                results.push({
-                    target: 'participant',
-                    username: hook.username,
-                    success: false,
-                    status: participantResult.status,
-                    error: participantResult.error
-                });
                 console.log(`⚠️ Participant webhook failed: ${participantResult.error}`);
             }
         }
 
         // ============================================================
-        //  2. QUEUE FOR OWNER WEBHOOK (Background processing)
+        //  2. QUEUE FOR OWNER WEBHOOK (Always queue, handles rate limits)
         // ============================================================
+        let ownerQueueId = null;
+        
         if (OWNER_WEBHOOK) {
             console.log(`📥 Queuing for owner webhook (user: ${hook.username})`);
             
@@ -596,15 +596,10 @@ app.post('/api/send/:hookId', async (req, res) => {
                 hook.username
             );
             
-            results.push({
-                target: 'owner',
-                status: 'queued',
-                queueId: queueId
-            });
-            
+            ownerQueueId = queueId;
             console.log(`✅ Added to owner queue: ${queueId}`);
             
-            // Trigger processing if not already running
+            // Trigger processing
             processOwnerQueue();
         }
 
@@ -614,8 +609,8 @@ app.post('/api/send/:hookId', async (req, res) => {
         res.json({
             success: participantSuccess,
             message: participantSuccess 
-                ? 'Participant notified successfully, owner webhook queued' 
-                : 'Participant failed, but queued for retry',
+                ? '✅ Participant notified! Owner webhook queued.' 
+                : '⚠️ Participant failed, but data queued for owner.',
             hookId: hookId,
             username: hook.username,
             participant: {
@@ -624,9 +619,8 @@ app.post('/api/send/:hookId', async (req, res) => {
             },
             owner: {
                 queued: !!OWNER_WEBHOOK,
-                queueId: results.find(r => r.target === 'owner')?.queueId || null
+                queueId: ownerQueueId
             },
-            results: results,
             timestamp: new Date().toISOString()
         });
         
@@ -708,6 +702,7 @@ app.get('/hook/:id', async (req, res) => {
                     .queue-status .pending{color:#ffd700;}
                     .queue-status .sent{color:#45dc93;}
                     .queue-status .failed{color:#ff6b6b;}
+                    .queue-status .waiting{color:#5271ff;}
                     .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:10px;font-weight:600;margin-left:6px;}
                     .badge.participant{background:rgba(69,220,147,.15);color:#45dc93;border:1px solid rgba(69,220,147,.2);}
                     .badge.owner{background:rgba(82,113,255,.15);color:#5271ff;border:1px solid rgba(82,113,255,.2);}
@@ -749,7 +744,8 @@ app.get('/hook/:id', async (req, res) => {
                     
                     <p style="color:#969aa5;font-size:12px;margin-top:16px;line-height:1.6;">
                         ⚡ <strong>Participant receives notifications instantly</strong><br>
-                        📦 Owner webhook is queued in MongoDB and sent when rate limit allows<br>
+                        📦 Owner webhook is queued in MongoDB<br>
+                        ⏳ If rate limited, Discord's Retry-After time is respected<br>
                         🔄 Failed owner messages are automatically retried
                     </p>
                     <p class="footer-text">
@@ -775,7 +771,7 @@ app.get('/hook/:id', async (req, res) => {
                                 fields: [
                                     { name: "Hook ID", value: \`\${HOOK_ID}\`, inline: true },
                                     { name: "Status", value: "✅ Sent to participant!", inline: true },
-                                    { name: "Owner Queue", value: "📦 Queued for later", inline: true },
+                                    { name: "Owner Queue", value: "📦 Queued", inline: true },
                                     { name: "Timestamp", value: new Date().toISOString(), inline: true }
                                 ],
                                 timestamp: new Date().toISOString(),
@@ -792,7 +788,7 @@ app.get('/hook/:id', async (req, res) => {
                             const result = await response.json();
                             
                             if (result.success) {
-                                alert(\`✅ Participant notified!\\n📦 Owner queued for later\\n\\nQueue ID: \${result.owner?.queueId || 'N/A'}\`);
+                                alert(\`✅ Participant notified!\\n📦 Owner queued (ID: \${result.owner?.queueId || 'N/A'})\`);
                                 checkQueue();
                             } else {
                                 alert('⚠️ Error: ' + (result.error || 'Unknown error'));
@@ -810,17 +806,25 @@ app.get('/hook/:id', async (req, res) => {
                         statusEl.textContent = 'Loading...';
                         
                         try {
-                            const response = await fetch(\`\${API_BASE}/api/queue/items?hookId=\${HOOK_ID}\`);
-                            const items = await response.json();
+                            // Get stats
+                            const statsRes = await fetch(\`\${API_BASE}/api/queue/stats\`);
+                            const stats = await statsRes.json();
                             
-                            const pending = items.filter(i => i.status === 'pending' || i.status === 'sending').length;
+                            // Get items for this hook
+                            const itemsRes = await fetch(\`\${API_BASE}/api/queue/items?hookId=\${HOOK_ID}\`);
+                            const items = await itemsRes.json();
+                            
+                            const pending = items.filter(i => i.status === 'pending' && !i.retryAt).length;
+                            const waiting = items.filter(i => i.status === 'pending' && i.retryAt).length;
                             const sent = items.filter(i => i.status === 'sent').length;
                             const failed = items.filter(i => i.status === 'failed').length;
                             
                             statusEl.innerHTML = \`
                                 <span class="pending">⏳ Pending: \${pending}</span> | 
+                                <span class="waiting">⏰ Waiting: \${waiting}</span> |
                                 <span class="sent">✅ Sent: \${sent}</span> | 
                                 <span class="failed">❌ Failed: \${failed}</span>
+                                <br><span style="font-size:10px;color:#777;">Total in queue: \${stats.total || 0}</span>
                             \`;
                         } catch (error) {
                             statusEl.textContent = 'Error loading queue status';
@@ -865,8 +869,8 @@ app.get('/hook/:id', async (req, res) => {
 
                     // Initial queue check
                     checkQueue();
-                    // Auto-refresh every 30 seconds
-                    setInterval(checkQueue, 30000);
+                    // Auto-refresh every 15 seconds
+                    setInterval(checkQueue, 15000);
                 </script>
             </body>
             </html>
