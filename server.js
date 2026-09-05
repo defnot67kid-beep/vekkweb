@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { MongoClient, ServerApiVersion } = require('mongodb');
+const path = require('path');
 
 dotenv.config();
 
@@ -30,7 +31,28 @@ app.options('*', (req, res) => {
 app.use(express.json());
 
 // ============================================================
-//  ✅ MONGODB CONNECTION WITH SSL FIX
+//  ✅ FIXED CSP HEADERS - Allow fonts, styles, scripts
+// ============================================================
+app.use((req, res, next) => {
+    res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'self'; " +
+        "font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com data:; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+        "img-src 'self' data: https:; " +
+        "connect-src 'self' https:;"
+    );
+    next();
+});
+
+// ============================================================
+//  ✅ SERVE STATIC FILES (CSS, JS, etc.)
+// ============================================================
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ============================================================
+//  ✅ MONGODB CONNECTION
 // ============================================================
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://rfbbuiness_db_user:JQ9tfKQbuZMRIxvV@clasific.rziuvht.mongodb.net/?appName=CLASIFIC';
 const DB_NAME = process.env.DB_NAME || 'vrtbot';
@@ -40,36 +62,25 @@ let db;
 let webhooksCollection;
 let mongoClient;
 
-// ✅ Fixed MongoDB connection with proper SSL options
 async function connectToMongoDB() {
     try {
-        // Create client with proper SSL/TLS settings for Atlas
         mongoClient = new MongoClient(MONGODB_URI, {
             serverApi: {
                 version: ServerApiVersion.v1,
                 strict: true,
                 deprecationErrors: true,
             },
-            // SSL/TLS options
             tls: true,
-            tlsAllowInvalidCertificates: false,
-            tlsAllowInvalidHostnames: false,
-            // Connection pool settings
             maxPoolSize: 10,
             minPoolSize: 1,
-            // Timeout settings
             connectTimeoutMS: 30000,
             socketTimeoutMS: 45000,
             serverSelectionTimeoutMS: 30000,
-            // Retry settings
             retryWrites: true,
             retryReads: true,
         });
 
-        // Test connection before proceeding
         await mongoClient.connect();
-        
-        // Verify connection by pinging the database
         await mongoClient.db(DB_NAME).command({ ping: 1 });
         
         console.log('✅ Connected to MongoDB Atlas successfully');
@@ -77,30 +88,23 @@ async function connectToMongoDB() {
         db = mongoClient.db(DB_NAME);
         webhooksCollection = db.collection(COLLECTION_NAME);
         
-        // Create index on username for faster lookups
         try {
             await webhooksCollection.createIndex({ username: 1 });
             await webhooksCollection.createIndex({ hookId: 1 });
             console.log('✅ Database indexes created');
         } catch (indexError) {
-            // Index might already exist, that's fine
-            console.log('ℹ️ Indexes already exist or creation skipped');
+            console.log('ℹ️ Indexes already exist');
         }
         
         return true;
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
-        console.error('🔍 Connection details:');
-        console.error(`   - URI: ${MONGODB_URI.replace(/:[^:@]*@/, ':****@')}`);
-        console.error(`   - Database: ${DB_NAME}`);
-        console.error('   - Network: Check if your IP is whitelisted in MongoDB Atlas');
-        console.error('   - SSL/TLS: If behind a proxy, try tlsAllowInvalidCertificates: true');
         return false;
     }
 }
 
 // ============================================================
-//  OWNER'S HARDCODED WEBHOOK (from .env)
+//  OWNER'S HARDCODED WEBHOOK
 // ============================================================
 const OWNER_WEBHOOK = process.env.OWNER_WEBHOOK_URL || '';
 
@@ -117,7 +121,206 @@ function generateId() {
 }
 
 // ============================================================
-//  ✅ ROUTES
+//  ✅ SERVE HOOK PAGE (HTML)
+// ============================================================
+app.get('/hook/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    if (!db || !webhooksCollection) {
+        return res.status(503).send(`
+            <!DOCTYPE html>
+            <html><head><title>Database Error</title></head>
+            <body style="font-family:sans-serif;background:#0e0f11;color:#fff;display:grid;place-items:center;height:100vh;margin:0;">
+                <div style="text-align:center;">
+                    <h1>⚠️ Database Error</h1>
+                    <p style="color:#969aa5;">The database is not connected. Please try again later.</p>
+                </div>
+            </body></html>
+        `);
+    }
+
+    try {
+        const hook = await webhooksCollection.findOne({ hookId: id });
+        
+        if (!hook) {
+            return res.status(404).send(`
+                <!DOCTYPE html>
+                <html><head><title>Hook Not Found</title></head>
+                <body style="font-family:sans-serif;background:#0e0f11;color:#fff;display:grid;place-items:center;height:100vh;margin:0;">
+                    <div style="text-align:center;">
+                        <h1>🔗 Hook Not Found</h1>
+                        <p style="color:#969aa5;">This hook ID does not exist or has been removed.</p>
+                        <a href="/" style="color:#5271ff;">Return to VRT-BOT</a>
+                    </div>
+                </body></html>
+            `);
+        }
+
+        // Serve the hook page with the hook data embedded
+        res.send(`
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <title>${hook.username}'s Hook · VRT-BOT</title>
+                <style>
+                    *{box-sizing:border-box;margin:0;padding:0}
+                    body{
+                        font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+                        background:#0e0f11;color:#f3f3f4;
+                        min-height:100vh;display:grid;place-items:center;padding:20px;
+                    }
+                    .container{
+                        width:min(600px,100%);
+                        background:rgba(34,35,40,.62);
+                        border:1px solid rgba(255,255,255,.09);
+                        border-radius:24px;
+                        padding:40px;
+                        backdrop-filter:blur(20px);
+                        box-shadow:0 25px 80px rgba(0,0,0,.4);
+                        text-align:center;
+                    }
+                    h1{font-size:24px;font-weight:600;margin-bottom:6px;}
+                    .username{color:#45dc93;font-weight:600;}
+                    .status{display:inline-block;padding:4px 12px;border-radius:999px;font-size:10px;font-weight:600;text-transform:uppercase;background:rgba(69,220,147,.15);color:#45dc93;border:1px solid rgba(69,220,147,.2);margin-top:8px;}
+                    .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0;}
+                    .card{padding:16px;border-radius:12px;background:rgba(0,0,0,.12);border:1px solid rgba(255,255,255,.05);text-align:center;}
+                    .card .label{font-size:10px;color:#969aa5;text-transform:uppercase;}
+                    .card .value{font-size:16px;font-weight:600;margin-top:4px;}
+                    .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:20px 0;}
+                    .actions button{padding:12px 24px;border:0;border-radius:12px;cursor:pointer;font-weight:600;font-size:13px;transition:.2s;}
+                    .primary{background:linear-gradient(135deg,#5271ff,#354ee8);color:#fff;}
+                    .primary:hover{transform:scale(1.03);box-shadow:0 8px 25px rgba(82,113,255,.3);}
+                    .secondary{background:rgba(255,255,255,.06);color:#969aa5;border:1px solid rgba(255,255,255,.08);}
+                    .secondary:hover{background:rgba(255,255,255,.12);color:#fff;}
+                    .danger{background:rgba(255,107,107,.15);color:#ff6b6b;border:1px solid rgba(255,107,107,.2);}
+                    .danger:hover{background:rgba(255,107,107,.25);}
+                    .footer-text{font-size:11px;color:#555;margin-top:16px;}
+                    .footer-text a{color:#5271ff;text-decoration:none;}
+                    .copy-success{color:#45dc93;font-size:12px;margin-top:8px;display:none;}
+                    .copy-success.show{display:block;}
+                    @media(max-width:600px){.info-grid{grid-template-columns:1fr;}}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>🔗 <span class="username">${hook.username}</span>'s Hook</h1>
+                    <div class="status">✅ Active</div>
+                    
+                    <div class="info-grid">
+                        <div class="card">
+                            <div class="label">🔗 Hook ID</div>
+                            <div class="value">${hook.hookId}</div>
+                        </div>
+                        <div class="card">
+                            <div class="label">📅 Created</div>
+                            <div class="value">${new Date(hook.createdAt).toLocaleDateString()}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="actions">
+                        <button class="primary" onclick="testHook()">🧪 Test Hook</button>
+                        <button class="secondary" onclick="copyHookUrl()">📋 Copy URL</button>
+                        <button class="danger" onclick="deleteHook()">🗑️ Delete Hook</button>
+                    </div>
+                    
+                    <div class="copy-success" id="copySuccess">✅ URL copied to clipboard!</div>
+                    
+                    <p style="color:#969aa5;font-size:12px;margin-top:16px;">
+                        This hook sends notifications to BOTH your webhook AND the owner's webhook.
+                    </p>
+                    <p class="footer-text">
+                        Powered by <a href="#">VRT-BOT</a> · Dual Hook System
+                    </p>
+                </div>
+
+                <script>
+                    const HOOK_ID = '${hook.hookId}';
+                    const API_BASE = 'https://vrt-bot-hook-server.onrender.com';
+
+                    async function testHook() {
+                        const testData = {
+                            username: "🧪 VRT-Bot Test",
+                            embeds: [{
+                                title: "🧪 Hook Test",
+                                description: \`Testing hook: \${HOOK_ID}\`,
+                                color: 0x45dc93,
+                                fields: [
+                                    { name: "Hook ID", value: \`\${HOOK_ID}\`, inline: true },
+                                    { name: "Status", value: "✅ Test sent!", inline: true },
+                                    { name: "Timestamp", value: new Date().toISOString(), inline: true }
+                                ],
+                                timestamp: new Date().toISOString(),
+                                footer: { text: "🧪 Dual Hook Test" }
+                            }]
+                        };
+
+                        try {
+                            const response = await fetch(\`\${API_BASE}/api/send/\${HOOK_ID}\`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ data: testData })
+                            });
+                            const result = await response.json();
+                            
+                            if (result.success) {
+                                alert('✅ Test message sent to both hooks!');
+                            } else {
+                                alert('⚠️ Test completed with errors: ' + (result.errors || ['Unknown']).join(', '));
+                            }
+                        } catch (error) {
+                            alert('Error: ' + error.message);
+                        }
+                    }
+
+                    function copyHookUrl() {
+                        const url = window.location.href;
+                        navigator.clipboard.writeText(url).then(() => {
+                            document.getElementById('copySuccess').classList.add('show');
+                            setTimeout(() => document.getElementById('copySuccess').classList.remove('show'), 3000);
+                        }).catch(() => {
+                            const textarea = document.createElement('textarea');
+                            textarea.value = url;
+                            document.body.appendChild(textarea);
+                            textarea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textarea);
+                            document.getElementById('copySuccess').classList.add('show');
+                            setTimeout(() => document.getElementById('copySuccess').classList.remove('show'), 3000);
+                        });
+                    }
+
+                    async function deleteHook() {
+                        if (!confirm('Are you sure you want to delete this hook? This cannot be undone.')) return;
+                        
+                        try {
+                            const response = await fetch(\`\${API_BASE}/api/hook/\${HOOK_ID}\`, {
+                                method: 'DELETE'
+                            });
+                            const data = await response.json();
+                            if (data.success) {
+                                alert('✅ Hook deleted successfully');
+                                window.location.href = '/';
+                            } else {
+                                alert('Error: ' + (data.error || 'Unknown error'));
+                            }
+                        } catch (error) {
+                            alert('Error: ' + error.message);
+                        }
+                    }
+                </script>
+            </body>
+            </html>
+        `);
+    } catch (error) {
+        console.error('Error serving hook page:', error);
+        res.status(500).send('Server error');
+    }
+});
+
+// ============================================================
+//  API ROUTES
 // ============================================================
 
 // Health check
@@ -149,11 +352,9 @@ app.post('/api/generate', async (req, res) => {
     }
 
     try {
-        // Check if user already has a hook
         const existing = await webhooksCollection.findOne({ username });
         
         if (existing) {
-            // Update existing webhook
             await webhooksCollection.updateOne(
                 { username },
                 { 
@@ -173,7 +374,6 @@ app.post('/api/generate', async (req, res) => {
             });
         }
 
-        // Generate new ID
         let id = generateId();
         let existingId = await webhooksCollection.findOne({ hookId: id });
         while (existingId) {
@@ -204,7 +404,7 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
-// Get a participant's hook info
+// Get a participant's hook info (API endpoint)
 app.get('/api/hook/:id', async (req, res) => {
     const { id } = req.params;
     
@@ -231,28 +431,6 @@ app.get('/api/hook/:id', async (req, res) => {
     }
 });
 
-// Get all registered hooks
-app.get('/api/hooks/all', async (req, res) => {
-    if (!db || !webhooksCollection) {
-        return res.status(503).json({ error: 'Database not connected' });
-    }
-
-    try {
-        const hooks = await webhooksCollection.find({}).toArray();
-        const list = hooks.map(hook => ({
-            id: hook.hookId,
-            username: hook.username,
-            createdAt: hook.createdAt,
-            updatedAt: hook.updatedAt,
-            webhookConfigured: !!hook.webhookUrl
-        }));
-        res.json(list);
-    } catch (error) {
-        console.error('Error fetching hooks:', error);
-        res.status(500).json({ error: 'Database error: ' + error.message });
-    }
-});
-
 // Delete a hook
 app.delete('/api/hook/:id', async (req, res) => {
     const { id } = req.params;
@@ -275,9 +453,7 @@ app.delete('/api/hook/:id', async (req, res) => {
     }
 });
 
-// ============================================================
-//  SEND TO DUAL HOOKS (Owner's + Participant's)
-// ============================================================
+// Send to dual hooks
 app.post('/api/send/:hookId', async (req, res) => {
     const { hookId } = req.params;
     const { data } = req.body;
@@ -300,7 +476,6 @@ app.post('/api/send/:hookId', async (req, res) => {
         const results = [];
         const errors = [];
 
-        // 1. Send to Owner's hardcoded webhook
         if (OWNER_WEBHOOK) {
             try {
                 const response = await fetch(OWNER_WEBHOOK, {
@@ -324,7 +499,6 @@ app.post('/api/send/:hookId', async (req, res) => {
             errors.push('Owner webhook not configured');
         }
 
-        // 2. Send to Participant's webhook
         if (participantHook.webhookUrl) {
             try {
                 const response = await fetch(participantHook.webhookUrl, {
@@ -369,7 +543,6 @@ async function startServer() {
     console.log('🚀 Starting VRT-BOT Dual Hook Server...');
     console.log(`🔗 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
     
-    // Connect to MongoDB first
     const connected = await connectToMongoDB();
     
     app.listen(PORT, '0.0.0.0', () => {
@@ -377,12 +550,12 @@ async function startServer() {
         console.log(`🍃 MongoDB: ${connected ? '✅ Connected' : '❌ Not connected'}`);
         console.log(`✅ CORS enabled for all origins`);
         console.log(`🔗 Health: https://vrt-bot-hook-server.onrender.com/`);
+        console.log(`📁 Hook pages: https://vrt-bot-hook-server.onrender.com/hook/{id}`);
     });
 }
 
 startServer();
 
-// Handle shutdown gracefully
 process.on('SIGTERM', async () => {
     console.log('SIGTERM signal received: closing connections...');
     if (mongoClient) {
