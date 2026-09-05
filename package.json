@@ -1,7 +1,7 @@
 {
   "name": "vrt-bot-dual-hook-server",
   "version": "1.0.0",
-  "description": "VRT-BOT Dual Hook Server with unique participant URLs",
+  "description": "VRT-BOT Dual Hook Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
