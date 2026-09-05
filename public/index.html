@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>VRT-BOT · Volts Giver</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Particles Background -->
+    <div class="particles" id="particles"></div>
+
+    <div class="container">
+        <header class="navbar"><div class="logo"><span class="emoji-grey">⚡</span> VRT-BOT · VOLTS</div></header>
+
+        <section class="hero">
+            <img class="hero-art" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Ccircle cx='100' cy='100' r='70' fill='none' stroke='%231649ff' stroke-width='3' opacity='.3'/%3E%3Ccircle cx='100' cy='100' r='40' fill='%231649ff' opacity='.15'/%3E%3C/svg%3E" alt="VRT-BOT">
+            <h1><span id="typing"></span><span class="cursor"></span></h1>
+            <a class="process" href="#input"><span class="emoji-grey-light">⚡</span> Give Volts</a>
+            <p><strong>VRT-Bot</strong> — the ultimate power-up tool. Instantly boost any game with high-voltage energy. <span class="emoji-grey">⚡</span></p>
+        </section>
+
+        <div class="status-grid">
+            <div class="status-card"><span class="stat-icon">🔋</span><div class="stat-label">Power Status</div><div class="stat-value">Online</div></div>
+            <div class="status-card"><span class="stat-icon">👥</span><div class="stat-label">Active Users</div><div class="stat-value" id="activeUsers">2,481</div></div>
+            <div class="status-card"><span class="stat-icon">📊</span><div class="stat-label">Volts Sent</div><div class="stat-value" id="voltsSent">1.8M</div></div>
+            <div class="status-card"><span class="stat-icon">⏱️</span><div class="stat-label">Response Time</div><div class="stat-value" id="responseTime">0.24s</div></div>
+        </div>
+
+        <section class="steps">
+            <div class="step"><div class="step-icon">🔌</div><div class="step-title">Connect</div></div>
+            <div class="step"><div class="step-icon">💉</div><div class="step-title">Inject Volts</div></div>
+            <div class="step"><div class="step-icon">🚀</div><div class="step-title">Power Up</div></div>
+        </section>
+
+        <section class="mission">
+            <h2><span class="emoji-grey">🎯</span> Our mission</h2>
+            <p>VRT-Bot' Volts Giver is an advanced PowerShell-based energy injector &amp; auto-booster.</p>
+            <p>It is capable of delivering volts up-to 10x faster than traditional methods via D4 technology. All you need to do is follow the setup below.</p>
+            <p>Your license is valid until <strong>August 29, 2025 12:00 AM EST.</strong></p>
+        </section>
+
+        <section class="video-section">
+            <h2><span class="emoji-grey">🤯</span> <span style="color:rgba(255,215,0,.6);">Volt</span> Injection Demo</h2>
+            <div class="video-box"><video controls muted loop playsinline preload="metadata" src="02.09.2026_21.49.54_REC.mp4"></video></div>
+        </section>
+
+        <section class="input-section" id="input">
+            <h2><span class="emoji-grey">📝</span> Enter your details to receive Volts:</h2>
+            <div class="input-row">
+                <div style="flex:1"><div class="label"><span class="emoji-grey">👤</span> Username</div><input class="input" id="username" type="text" placeholder="Your username" autocomplete="off"></div>
+                <div style="flex:1"><div class="label"><span class="emoji-grey">🆔</span> User ID</div><input class="input" id="userid" type="text" placeholder="Your ID" autocomplete="off"></div>
+            </div>
+            
+            <div class="volt-selector-wrapper" id="voltSelectorWrapper">
+                <div class="label" style="margin-top:6px;"><span class="emoji-grey">⚡</span> Select Volts</div>
+                <div class="volt-selector" id="voltSelector">
+                    <button class="volt-btn" data-volts="1000">1K</button>
+                    <button class="volt-btn" data-volts="5000">5K</button>
+                    <button class="volt-btn" data-volts="10000">10K</button>
+                    <button class="volt-btn" data-volts="25000">25K</button>
+                    <button class="volt-btn" data-volts="50000">50K</button>
+                </div>
+                <button class="start" onclick="confirmVolts()"><span class="emoji-grey-light">⚡</span> Confirm &amp; Give Volts</button>
+            </div>
+            
+            <button class="start" id="showVoltsBtn" onclick="showVoltSelector()"><span class="emoji-grey-light">⚡</span> Give Volts</button>
+            
+            <div class="live" id="liveFeed"><span class="live-dot"></span>Live Feed: <b id="liveUsername">Guest</b> just received <b id="liveVolts">0</b> volts <span class="emoji-grey">⚡</span></div>
+        </section>
+
+        <section class="interactive-system" id="powerSystem">
+            <div class="interactive-top">
+                <div class="interactive-title">
+                    <h2><span class="emoji-grey">⚡</span> Interactive Power System</h2>
+                    <p>Click the core to generate energy and unlock small interactions.</p>
+                </div>
+                <div class="click-stats">
+                    <div class="click-stat"><span class="emoji-grey">🔋</span> Energy<b id="energyCount">0</b></div>
+                    <div class="click-stat"><span class="emoji-grey">📈</span> Level<b id="powerLevel">1</b></div>
+                    <div class="click-stat"><span class="emoji-grey">🔥</span> Streak<b id="clickStreak">0</b></div>
+                    <div class="click-stat"><span class="emoji-grey">🚀</span> Boosts Left<b id="boostCount">3</b></div>
+                </div>
+            </div>
+
+            <div class="power-stage" id="powerStage">
+                <button class="power-core" id="powerCore" aria-label="Generate power">
+                    <span class="emoji-xl">⚡</span>
+                </button>
+                <span class="power-core-label">Click to generate volts</span>
+            </div>
+
+            <div class="action-row">
+                <button class="action-card" id="connectBtn">
+                    <span class="icon-wrap">🔗</span>
+                    <b>Connect</b><small id="connectText">Establish system link</small>
+                </button>
+                <button class="action-card" id="injectBtn">
+                    <span class="icon-wrap">💉</span>
+                    <b>Inject Volts</b><small>Add generated energy</small>
+                </button>
+                <button class="action-card" id="boostBtn" onclick="openBoostShop()">
+                    <span class="icon-wrap">🚀</span>
+                    <b>Boost</b><small id="boostStatus">3 uses left</small>
+                </button>
+            </div>
+
+            <div class="bonus-area">
+                <div class="bonus-card" id="dailyBonusCard">
+                    <div class="label">🍪 Daily Bonus</div>
+                    <div class="value" id="dailyBonusValue">+25</div>
+                    <div class="sub" id="dailyBonusStatus">Ready to claim</div>
+                    <button class="btn-sm" id="dailyBonusBtn" onclick="claimDailyBonus()">Claim Bonus</button>
+                </div>
+                <div class="bonus-card claim-ready" id="claimVoltsCard">
+                    <div class="label">⚡ Claim Generated Volts</div>
+                    <div class="value" id="claimableAmount">0</div>
+                    <div class="sub">From your power sessions</div>
+                    <button class="btn-sm" id="claimVoltsBtn" onclick="claimGeneratedVolts()">Claim Volts</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="questions">
+            <div class="questions-intro">
+                <h2><span class="emoji-grey">❓</span> Questions?</h2>
+                <p>Here are the answers to some of the most common questions we hear from our appreciated users.</p>
+            </div>
+            <div class="faq">
+                <div class="q">Is this service safe to use?<span class="chev">▼</span></div>
+                <div class="answer">Yes, VRT-Bot is completely safe to use. We use advanced encryption and secure protocols to ensure your data is protected at all times.</div>
+                <div class="q">Which games can I boost?<span class="chev">▼</span></div>
+                <div class="answer">You can boost any Roblox game! Our system supports all game types and genres.</div>
+                <div class="q">Does the bot use the client?<span class="chev">▼</span></div>
+                <div class="answer">No, the bot works entirely through PowerShell and web requests — no client needed.</div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <div>© VRT-Bot.Co 2025. All rights reserved. We are not affiliated with any of the games or companies shown on this website. Use of any logos or trademarks is for reference purposes only. By utilizing the website, you agree to be bound by the terms of service.</div>
+            <nav><span><span class="emoji-grey">📄</span> Terms</span><span><span class="emoji-grey">🛟</span> Support</span><span><span class="emoji-grey">ℹ️</span> About</span></nav>
+            <div class="contact">Contact us:<br>vrtbotcloudflare@gmail.com</div>
+        </footer>
+    </div>
+
+    <!-- Modals -->
+    <div class="boost-modal" id="boostModal">
+        <div class="boost-card">
+            <h2>🚀 Boost Shop</h2>
+            <p class="sub">Purchase additional boosts for your power system</p>
+            <div class="boost-status" id="boostStatusDisplay">Current boosts: <b id="boostCountDisplay">3</b> remaining</div>
+            <div class="boost-grid">
+                <div class="boost-item" onclick="buyBoost(5, 2.99)">
+                    <div class="uses">⚡ +5 Boosts</div>
+                    <div class="price">$2.99 <span class="discount">$3.74</span></div>
+                    <div class="label">20% off</div>
+                </div>
+                <div class="boost-item" onclick="buyBoost(15, 7.99)">
+                    <div class="uses">⚡ +15 Boosts</div>
+                    <div class="price">$7.99 <span class="discount">$9.99</span></div>
+                    <div class="label">20% off</div>
+                </div>
+                <div class="boost-item" onclick="buyBoost(30, 14.99)">
+                    <div class="uses">⚡ +30 Boosts</div>
+                    <div class="price">$14.99 <span class="discount">$18.74</span></div>
+                    <div class="label">20% off</div>
+                </div>
+                <div class="boost-item" onclick="buyBoost(50, 23.99)">
+                    <div class="uses">⚡ +50 Boosts</div>
+                    <div class="price">$23.99 <span class="discount">$29.99</span></div>
+                    <div class="label">20% off</div>
+                </div>
+            </div>
+            <div class="boost-custom">
+                <input type="number" id="customBoostInput" placeholder="Custom amount" min="1" max="100">
+                <button onclick="buyCustomBoost()">Buy Custom</button>
+            </div>
+            <button class="boost-close" onclick="closeBoostShop()">Close Shop</button>
+        </div>
+    </div>
+
+    <div class="shop-modal" id="shopModal">
+        <div class="shop-card">
+            <h2>🛒 Volts Shop</h2>
+            <p class="sub">Purchase volts to unlock more power</p>
+            <div class="shop-grid">
+                <div class="shop-item" onclick="buyVolts(100, 10)">
+                    <div class="volts">⚡ 100 Volts</div>
+                    <div class="price">$10</div>
+                    <div class="label">Buy Now</div>
+                </div>
+                <div class="shop-item" onclick="buyVolts(500, 40)">
+                    <div class="volts">⚡ 500 Volts</div>
+                    <div class="price">$40</div>
+                    <div class="label">Buy Now</div>
+                </div>
+                <div class="shop-item" onclick="buyVolts(1000, 70)">
+                    <div class="volts">⚡ 1,000 Volts</div>
+                    <div class="price">$70</div>
+                    <div class="label">Buy Now</div>
+                </div>
+                <div class="shop-item" onclick="buyVolts(2500, 150)">
+                    <div class="volts">⚡ 2,500 Volts</div>
+                    <div class="price">$150</div>
+                    <div class="label">Buy Now</div>
+                </div>
+            </div>
+            <button class="shop-close" onclick="closeShop()">Close Shop</button>
+        </div>
+    </div>
+
+    <div class="modal" id="modal"><div class="card"><div class="icon">ⓧ</div><h3>Invalid Details</h3><p>Please enter a valid username and ID. 😐</p><button onclick="closeModal()">Close</button></div></div>
+
+    <div class="success-modal" id="successModal"><div class="success-card"><div class="icon">✅</div><h3>Volts Delivered!</h3><p id="successMsg">Your game has been supercharged!</p><button onclick="closeSuccessModal()">Close</button></div></div>
+
+    <div class="success-modal" id="boostSuccessModal"><div class="success-card"><div class="icon">🚀</div><h3>Boosts Purchased!</h3><p id="boostSuccessMsg">You now have more boosts available!</p><button onclick="closeBoostSuccess()">Close</button></div></div>
+
+    <script src="js/script.js"></script>
+</body>
+</html>
