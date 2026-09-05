@@ -10,18 +10,36 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================================
-//  ✅ CORS CONFIGURATION - FIXED
+//  ✅ CORS CONFIGURATION - COMPLETELY FIXED
 // ============================================================
-// Allow all origins for testing (you can restrict later)
+// Apply CORS middleware BEFORE any routes
 app.use(cors({
     origin: '*', // Allow all origins
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 }));
 
-// Handle preflight requests explicitly
-app.options('*', cors());
+// Handle preflight requests for all routes
+app.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    res.sendStatus(204);
+});
+
+// Add CORS headers to every response
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+    }
+    next();
+});
 
 app.use(express.json());
 app.use(express.static('public'));
@@ -79,7 +97,8 @@ app.get('/', (req, res) => {
         message: 'VRT-BOT Dual Hook Server',
         ownerWebhookConfigured: !!OWNER_WEBHOOK,
         registeredHooks: Object.keys(loadWebhooks()).length,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        cors: 'enabled'
     });
 });
 
@@ -279,6 +298,7 @@ app.listen(PORT, () => {
     console.log(`🔗 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
     console.log(`📁 Registered hooks: ${Object.keys(loadWebhooks()).length}`);
     console.log(`🔗 Health: https://vrtxduel.onrender.com/`);
+    console.log(`✅ CORS enabled for all origins`);
 });
 
 // Handle shutdown gracefully
