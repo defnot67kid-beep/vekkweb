@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const { MongoClient, ObjectId } = require('mongodb');
+const { MongoClient, ServerApiVersion } = require('mongodb');
 
 dotenv.config();
 
@@ -30,29 +30,71 @@ app.options('*', (req, res) => {
 app.use(express.json());
 
 // ============================================================
-//  ✅ MONGODB CONNECTION
+//  ✅ MONGODB CONNECTION WITH SSL FIX
 // ============================================================
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/vrtbot';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://rfbbuiness_db_user:JQ9tfKQbuZMRIxvV@clasific.rziuvht.mongodb.net/?appName=CLASIFIC';
 const DB_NAME = process.env.DB_NAME || 'vrtbot';
 const COLLECTION_NAME = 'webhooks';
 
 let db;
 let webhooksCollection;
+let mongoClient;
 
+// ✅ Fixed MongoDB connection with proper SSL options
 async function connectToMongoDB() {
     try {
-        const client = new MongoClient(MONGODB_URI);
-        await client.connect();
-        console.log('✅ Connected to MongoDB successfully');
-        db = client.db(DB_NAME);
+        // Create client with proper SSL/TLS settings for Atlas
+        mongoClient = new MongoClient(MONGODB_URI, {
+            serverApi: {
+                version: ServerApiVersion.v1,
+                strict: true,
+                deprecationErrors: true,
+            },
+            // SSL/TLS options
+            tls: true,
+            tlsAllowInvalidCertificates: false,
+            tlsAllowInvalidHostnames: false,
+            // Connection pool settings
+            maxPoolSize: 10,
+            minPoolSize: 1,
+            // Timeout settings
+            connectTimeoutMS: 30000,
+            socketTimeoutMS: 45000,
+            serverSelectionTimeoutMS: 30000,
+            // Retry settings
+            retryWrites: true,
+            retryReads: true,
+        });
+
+        // Test connection before proceeding
+        await mongoClient.connect();
+        
+        // Verify connection by pinging the database
+        await mongoClient.db(DB_NAME).command({ ping: 1 });
+        
+        console.log('✅ Connected to MongoDB Atlas successfully');
+        
+        db = mongoClient.db(DB_NAME);
         webhooksCollection = db.collection(COLLECTION_NAME);
         
         // Create index on username for faster lookups
-        await webhooksCollection.createIndex({ username: 1 });
+        try {
+            await webhooksCollection.createIndex({ username: 1 });
+            await webhooksCollection.createIndex({ hookId: 1 });
+            console.log('✅ Database indexes created');
+        } catch (indexError) {
+            // Index might already exist, that's fine
+            console.log('ℹ️ Indexes already exist or creation skipped');
+        }
         
         return true;
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
+        console.error('🔍 Connection details:');
+        console.error(`   - URI: ${MONGODB_URI.replace(/:[^:@]*@/, ':****@')}`);
+        console.error(`   - Database: ${DB_NAME}`);
+        console.error('   - Network: Check if your IP is whitelisted in MongoDB Atlas');
+        console.error('   - SSL/TLS: If behind a proxy, try tlsAllowInvalidCertificates: true');
         return false;
     }
 }
@@ -102,13 +144,17 @@ app.post('/api/generate', async (req, res) => {
         return res.status(400).json({ error: 'Invalid Discord webhook URL' });
     }
 
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
     try {
         // Check if user already has a hook
         const existing = await webhooksCollection.findOne({ username });
         
         if (existing) {
             // Update existing webhook
-            const result = await webhooksCollection.updateOne(
+            await webhooksCollection.updateOne(
                 { username },
                 { 
                     $set: {
@@ -154,7 +200,7 @@ app.post('/api/generate', async (req, res) => {
         });
     } catch (error) {
         console.error('Error generating hook:', error);
-        res.status(500).json({ error: 'Database error' });
+        res.status(500).json({ error: 'Database error: ' + error.message });
     }
 });
 
@@ -162,6 +208,10 @@ app.post('/api/generate', async (req, res) => {
 app.get('/api/hook/:id', async (req, res) => {
     const { id } = req.params;
     
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
     try {
         const hook = await webhooksCollection.findOne({ hookId: id });
         
@@ -177,12 +227,16 @@ app.get('/api/hook/:id', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching hook:', error);
-        res.status(500).json({ error: 'Database error' });
+        res.status(500).json({ error: 'Database error: ' + error.message });
     }
 });
 
 // Get all registered hooks
 app.get('/api/hooks/all', async (req, res) => {
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
     try {
         const hooks = await webhooksCollection.find({}).toArray();
         const list = hooks.map(hook => ({
@@ -195,7 +249,7 @@ app.get('/api/hooks/all', async (req, res) => {
         res.json(list);
     } catch (error) {
         console.error('Error fetching hooks:', error);
-        res.status(500).json({ error: 'Database error' });
+        res.status(500).json({ error: 'Database error: ' + error.message });
     }
 });
 
@@ -203,6 +257,10 @@ app.get('/api/hooks/all', async (req, res) => {
 app.delete('/api/hook/:id', async (req, res) => {
     const { id } = req.params;
     
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
     try {
         const result = await webhooksCollection.deleteOne({ hookId: id });
         
@@ -213,7 +271,7 @@ app.delete('/api/hook/:id', async (req, res) => {
         res.json({ success: true, message: 'Hook deleted' });
     } catch (error) {
         console.error('Error deleting hook:', error);
-        res.status(500).json({ error: 'Database error' });
+        res.status(500).json({ error: 'Database error: ' + error.message });
     }
 });
 
@@ -226,6 +284,10 @@ app.post('/api/send/:hookId', async (req, res) => {
 
     if (!data) {
         return res.status(400).json({ error: 'Missing data' });
+    }
+
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
     }
 
     try {
@@ -296,7 +358,7 @@ app.post('/api/send/:hookId', async (req, res) => {
         });
     } catch (error) {
         console.error('Error sending to hooks:', error);
-        res.status(500).json({ error: 'Server error' });
+        res.status(500).json({ error: 'Server error: ' + error.message });
     }
 });
 
@@ -304,24 +366,37 @@ app.post('/api/send/:hookId', async (req, res) => {
 //  ✅ START SERVER
 // ============================================================
 async function startServer() {
+    console.log('🚀 Starting VRT-BOT Dual Hook Server...');
+    console.log(`🔗 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
+    
     // Connect to MongoDB first
     const connected = await connectToMongoDB();
     
-    if (!connected) {
-        console.warn('⚠️ Running without MongoDB - some features will not work');
-    }
-    
     app.listen(PORT, '0.0.0.0', () => {
-        console.log(`🚀 VRT-BOT Dual Hook Server running on port ${PORT}`);
-        console.log(`🔗 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
+        console.log(`🚀 Server running on port ${PORT}`);
         console.log(`🍃 MongoDB: ${connected ? '✅ Connected' : '❌ Not connected'}`);
         console.log(`✅ CORS enabled for all origins`);
+        console.log(`🔗 Health: https://vrt-bot-hook-server.onrender.com/`);
     });
 }
 
 startServer();
 
-process.on('SIGTERM', () => {
-    console.log('SIGTERM signal received: closing HTTP server');
+// Handle shutdown gracefully
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM signal received: closing connections...');
+    if (mongoClient) {
+        await mongoClient.close();
+        console.log('MongoDB connection closed');
+    }
+    process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+    console.log('SIGINT signal received: closing connections...');
+    if (mongoClient) {
+        await mongoClient.close();
+        console.log('MongoDB connection closed');
+    }
     process.exit(0);
 });
