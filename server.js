@@ -9,11 +9,19 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// ============================================================
+//  ✅ CORS CONFIGURATION - FIXED
+// ============================================================
 app.use(cors({
-    origin: ['https://vrtvoltsxyc.netlify.app', 'http://localhost:5500', 'http://127.0.0.1:5500'],
-    credentials: true
+    origin: '*', // Allow all origins (for testing)
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// Handle preflight requests
+app.options('*', cors());
+
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -114,7 +122,7 @@ app.post('/api/generate', (req, res) => {
     // Generate new ID
     let id = generateId();
     while (webhooks[id]) {
-        id = generateId(); // Regenerate if collision
+        id = generateId();
     }
 
     webhooks[id] = {
@@ -254,39 +262,6 @@ app.post('/api/send/:hookId', async (req, res) => {
             owner: !!OWNER_WEBHOOK,
             participant: participantHook.username
         }
-    });
-});
-
-// ============================================================
-//  SERVE CUSTOM HOOK PAGES (Netlify will handle this)
-//  We just provide the data, Netlify serves the HTML
-// ============================================================
-app.get('/hook/:id', (req, res) => {
-    const { id } = req.params;
-    const webhooks = loadWebhooks();
-    
-    if (!webhooks[id]) {
-        return res.status(404).send(`
-            <!DOCTYPE html>
-            <html>
-            <head><title>Hook Not Found</title></head>
-            <body style="font-family:sans-serif;background:#0e0f11;color:#fff;display:grid;place-items:center;height:100vh;margin:0;">
-                <div style="text-align:center;">
-                    <h1>🔗 Hook Not Found</h1>
-                    <p style="color:#969aa5;">This hook ID does not exist or has been removed.</p>
-                    <a href="/" style="color:#5271ff;">Return to VRT-BOT</a>
-                </div>
-            </body>
-            </html>
-        `);
-    }
-
-    // Return the hook data as JSON for the frontend to render
-    res.json({
-        id,
-        username: webhooks[id].username,
-        createdAt: webhooks[id].createdAt,
-        webhookConfigured: !!webhooks[id].webhookUrl
     });
 });
 
