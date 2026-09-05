@@ -12,14 +12,15 @@ const PORT = process.env.PORT || 3000;
 // ============================================================
 //  ✅ CORS CONFIGURATION - FIXED
 // ============================================================
+// Allow all origins for testing (you can restrict later)
 app.use(cors({
-    origin: '*', // Allow all origins (for testing)
+    origin: '*', // Allow all origins
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// Handle preflight requests
+// Handle preflight requests explicitly
 app.options('*', cors());
 
 app.use(express.json());
@@ -42,12 +43,17 @@ function loadWebhooks() {
         }
         return {};
     } catch (e) {
+        console.error('Error loading webhooks:', e);
         return {};
     }
 }
 
 function saveWebhooks(webhooks) {
-    fs.writeFileSync(WEBHOOKS_FILE, JSON.stringify(webhooks, null, 2));
+    try {
+        fs.writeFileSync(WEBHOOKS_FILE, JSON.stringify(webhooks, null, 2));
+    } catch (e) {
+        console.error('Error saving webhooks:', e);
+    }
 }
 
 // ============================================================
@@ -272,5 +278,11 @@ app.listen(PORT, () => {
     console.log(`🚀 VRT-BOT Dual Hook Server running on port ${PORT}`);
     console.log(`🔗 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
     console.log(`📁 Registered hooks: ${Object.keys(loadWebhooks()).length}`);
-    console.log(`🔗 Health: http://localhost:${PORT}/`);
+    console.log(`🔗 Health: https://vrtxduel.onrender.com/`);
+});
+
+// Handle shutdown gracefully
+process.on('SIGTERM', () => {
+    console.log('SIGTERM signal received: closing HTTP server');
+    process.exit(0);
 });
