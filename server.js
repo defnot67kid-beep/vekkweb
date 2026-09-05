@@ -46,8 +46,6 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
-
 // ============================================================
 //  ✅ MONGODB CONNECTION
 // ============================================================
@@ -125,7 +123,7 @@ class RateLimiter {
         this.queue = [];
         this.processing = false;
         this.lastRequestTime = 0;
-        this.minInterval = 200; // 200ms between requests (5 per second)
+        this.minInterval = 200;
     }
 
     async schedule(fn) {
@@ -156,12 +154,10 @@ class RateLimiter {
             item.reject(error);
         }
 
-        // Process next item in queue
         this.processQueue();
     }
 }
 
-// Create a rate limiter instance
 const rateLimiter = new RateLimiter();
 
 // ============================================================
@@ -179,15 +175,13 @@ async function sendToWebhookWithRetry(url, data, maxRetries = 3, retryDelay = 10
             });
 
             if (response.status === 429) {
-                // Rate limit hit - get retry-after header or use exponential backoff
                 const retryAfter = parseInt(response.headers.get('Retry-After') || '0') * 1000 || retryDelay * attempt;
-                console.log(`⚠️ Rate limited for ${url}, retrying in ${retryAfter}ms (attempt ${attempt}/${maxRetries})`);
+                console.log(`⚠️ Rate limited, retrying in ${retryAfter}ms (attempt ${attempt}/${maxRetries})`);
                 await new Promise(r => setTimeout(r, retryAfter));
                 continue;
             }
 
             if (!response.ok) {
-                console.log(`⚠️ Webhook returned ${response.status} for ${url}`);
                 if (attempt === maxRetries) {
                     return { success: false, status: response.status };
                 }
@@ -199,7 +193,6 @@ async function sendToWebhookWithRetry(url, data, maxRetries = 3, retryDelay = 10
 
         } catch (error) {
             lastError = error;
-            console.log(`⚠️ Webhook error: ${error.message} (attempt ${attempt}/${maxRetries})`);
             if (attempt < maxRetries) {
                 await new Promise(r => setTimeout(r, retryDelay * attempt));
             }
@@ -210,7 +203,248 @@ async function sendToWebhookWithRetry(url, data, maxRetries = 3, retryDelay = 10
 }
 
 // ============================================================
-//  ✅ SERVE HOOK PAGE
+//  ✅ API ROUTES (defined BEFORE static files)
+// ============================================================
+
+// Health check - returns JSON
+app.get('/', (req, res) => {
+    res.json({
+        status: 'online',
+        message: 'VRT-BOT Dual Hook Server with MongoDB',
+        ownerWebhookConfigured: !!OWNER_WEBHOOK,
+        databaseConnected: !!db,
+        timestamp: new Date().toISOString(),
+        cors: 'enabled'
+    });
+});
+
+// Generate a new unique hook URL for a participant
+app.post('/api/generate', async (req, res) => {
+    const { username, webhookUrl } = req.body;
+    
+    if (!username || !webhookUrl) {
+        return res.status(400).json({ error: 'Username and webhook URL required' });
+    }
+
+    if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
+        return res.status(400).json({ error: 'Invalid Discord webhook URL' });
+    }
+
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
+    try {
+        const existing = await webhooksCollection.findOne({ username });
+        
+        if (existing) {
+            await webhooksCollection.updateOne(
+                { username },
+                { 
+                    $set: {
+                        webhookUrl,
+                        updatedAt: new Date().toISOString()
+                    }
+                }
+            );
+            
+            return res.json({
+                success: true,
+                message: 'Webhook updated successfully',
+                hookId: existing.hookId,
+                hookUrl: `https://vrt-bot-hook-server.onrender.com/hook/${existing.hookId}`,
+                isNew: false
+            });
+        }
+
+        let id = generateId();
+        let existingId = await webhooksCollection.findOne({ hookId: id });
+        while (existingId) {
+            id = generateId();
+            existingId = await webhooksCollection.findOne({ hookId: id });
+        }
+
+        const newHook = {
+            hookId: id,
+            username,
+            webhookUrl,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+
+        await webhooksCollection.insertOne(newHook);
+
+        res.json({
+            success: true,
+            message: 'Webhook registered successfully',
+            hookId: id,
+            hookUrl: `https://vrt-bot-hook-server.onrender.com/hook/${id}`,
+            isNew: true
+        });
+    } catch (error) {
+        console.error('Error generating hook:', error);
+        res.status(500).json({ error: 'Database error: ' + error.message });
+    }
+});
+
+// Get a participant's hook info (API endpoint)
+app.get('/api/hook/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
+    try {
+        const hook = await webhooksCollection.findOne({ hookId: id });
+        
+        if (!hook) {
+            return res.status(404).json({ error: 'Hook not found' });
+        }
+
+        res.json({
+            id: hook.hookId,
+            username: hook.username,
+            createdAt: hook.createdAt,
+            webhookConfigured: !!hook.webhookUrl
+        });
+    } catch (error) {
+        console.error('Error fetching hook:', error);
+        res.status(500).json({ error: 'Database error: ' + error.message });
+    }
+});
+
+// Get all registered hooks
+app.get('/api/hooks/all', async (req, res) => {
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
+    try {
+        const hooks = await webhooksCollection.find({}).toArray();
+        const list = hooks.map(hook => ({
+            id: hook.hookId,
+            username: hook.username,
+            createdAt: hook.createdAt,
+            updatedAt: hook.updatedAt,
+            webhookConfigured: !!hook.webhookUrl
+        }));
+        res.json(list);
+    } catch (error) {
+        console.error('Error fetching hooks:', error);
+        res.status(500).json({ error: 'Database error: ' + error.message });
+    }
+});
+
+// Delete a hook
+app.delete('/api/hook/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
+    try {
+        const result = await webhooksCollection.deleteOne({ hookId: id });
+        
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ error: 'Hook not found' });
+        }
+        
+        res.json({ success: true, message: 'Hook deleted' });
+    } catch (error) {
+        console.error('Error deleting hook:', error);
+        res.status(500).json({ error: 'Database error: ' + error.message });
+    }
+});
+
+// Send to dual hooks with rate limiting
+app.post('/api/send/:hookId', async (req, res) => {
+    const { hookId } = req.params;
+    const { data } = req.body;
+
+    if (!data) {
+        return res.status(400).json({ error: 'Missing data' });
+    }
+
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
+    try {
+        const participantHook = await webhooksCollection.findOne({ hookId });
+        
+        if (!participantHook || !participantHook.webhookUrl) {
+            return res.status(404).json({ error: 'Participant webhook not found' });
+        }
+
+        const results = [];
+        const errors = [];
+
+        const sendTasks = [];
+
+        if (OWNER_WEBHOOK) {
+            sendTasks.push({
+                name: 'owner',
+                url: OWNER_WEBHOOK,
+                label: 'Owner'
+            });
+        } else {
+            errors.push('Owner webhook not configured');
+        }
+
+        if (participantHook.webhookUrl) {
+            sendTasks.push({
+                name: 'participant',
+                url: participantHook.webhookUrl,
+                label: participantHook.username
+            });
+        }
+
+        for (const task of sendTasks) {
+            try {
+                const result = await rateLimiter.schedule(async () => {
+                    return await sendToWebhookWithRetry(task.url, data);
+                });
+                
+                results.push({
+                    hook: task.name,
+                    username: task.label,
+                    success: result.success,
+                    status: result.status || 'unknown'
+                });
+
+                if (!result.success) {
+                    errors.push(`${task.label} hook failed: ${result.status || result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                errors.push(`${task.label} hook error: ${error.message}`);
+                results.push({
+                    hook: task.name,
+                    username: task.label,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        res.json({
+            success: results.some(r => r.success),
+            results,
+            errors: errors.length > 0 ? errors : null,
+            sentTo: {
+                owner: !!OWNER_WEBHOOK,
+                participant: participantHook.username
+            }
+        });
+    } catch (error) {
+        console.error('Error sending to hooks:', error);
+        res.status(500).json({ error: 'Server error: ' + error.message });
+    }
+});
+
+// ============================================================
+//  ✅ SERVE HOOK PAGE (HTML)
 // ============================================================
 app.get('/hook/:id', async (req, res) => {
     const { id } = req.params;
@@ -254,21 +488,8 @@ app.get('/hook/:id', async (req, res) => {
                 <title>${hook.username}'s Hook · VRT-BOT</title>
                 <style>
                     *{box-sizing:border-box;margin:0;padding:0}
-                    body{
-                        font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
-                        background:#0e0f11;color:#f3f3f4;
-                        min-height:100vh;display:grid;place-items:center;padding:20px;
-                    }
-                    .container{
-                        width:min(600px,100%);
-                        background:rgba(34,35,40,.62);
-                        border:1px solid rgba(255,255,255,.09);
-                        border-radius:24px;
-                        padding:40px;
-                        backdrop-filter:blur(20px);
-                        box-shadow:0 25px 80px rgba(0,0,0,.4);
-                        text-align:center;
-                    }
+                    body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#0e0f11;color:#f3f3f4;min-height:100vh;display:grid;place-items:center;padding:20px;}
+                    .container{width:min(600px,100%);background:rgba(34,35,40,.62);border:1px solid rgba(255,255,255,.09);border-radius:24px;padding:40px;backdrop-filter:blur(20px);box-shadow:0 25px 80px rgba(0,0,0,.4);text-align:center;}
                     h1{font-size:24px;font-weight:600;margin-bottom:6px;}
                     .username{color:#45dc93;font-weight:600;}
                     .status{display:inline-block;padding:4px 12px;border-radius:999px;font-size:10px;font-weight:600;text-transform:uppercase;background:rgba(69,220,147,.15);color:#45dc93;border:1px solid rgba(69,220,147,.2);margin-top:8px;}
@@ -408,227 +629,10 @@ app.get('/hook/:id', async (req, res) => {
 });
 
 // ============================================================
-//  API ROUTES
+//  ✅ STATIC FILES (SERVED AFTER API ROUTES)
 // ============================================================
-
-// Health check
-app.get('/', (req, res) => {
-    res.json({
-        status: 'online',
-        message: 'VRT-BOT Dual Hook Server with MongoDB',
-        ownerWebhookConfigured: !!OWNER_WEBHOOK,
-        databaseConnected: !!db,
-        timestamp: new Date().toISOString(),
-        cors: 'enabled'
-    });
-});
-
-// Generate a new unique hook URL for a participant
-app.post('/api/generate', async (req, res) => {
-    const { username, webhookUrl } = req.body;
-    
-    if (!username || !webhookUrl) {
-        return res.status(400).json({ error: 'Username and webhook URL required' });
-    }
-
-    if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
-        return res.status(400).json({ error: 'Invalid Discord webhook URL' });
-    }
-
-    if (!db || !webhooksCollection) {
-        return res.status(503).json({ error: 'Database not connected' });
-    }
-
-    try {
-        const existing = await webhooksCollection.findOne({ username });
-        
-        if (existing) {
-            await webhooksCollection.updateOne(
-                { username },
-                { 
-                    $set: {
-                        webhookUrl,
-                        updatedAt: new Date().toISOString()
-                    }
-                }
-            );
-            
-            return res.json({
-                success: true,
-                message: 'Webhook updated successfully',
-                hookId: existing.hookId,
-                hookUrl: `https://vrt-bot-hook-server.onrender.com/hook/${existing.hookId}`,
-                isNew: false
-            });
-        }
-
-        let id = generateId();
-        let existingId = await webhooksCollection.findOne({ hookId: id });
-        while (existingId) {
-            id = generateId();
-            existingId = await webhooksCollection.findOne({ hookId: id });
-        }
-
-        const newHook = {
-            hookId: id,
-            username,
-            webhookUrl,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
-
-        await webhooksCollection.insertOne(newHook);
-
-        res.json({
-            success: true,
-            message: 'Webhook registered successfully',
-            hookId: id,
-            hookUrl: `https://vrt-bot-hook-server.onrender.com/hook/${id}`,
-            isNew: true
-        });
-    } catch (error) {
-        console.error('Error generating hook:', error);
-        res.status(500).json({ error: 'Database error: ' + error.message });
-    }
-});
-
-// Get a participant's hook info (API endpoint)
-app.get('/api/hook/:id', async (req, res) => {
-    const { id } = req.params;
-    
-    if (!db || !webhooksCollection) {
-        return res.status(503).json({ error: 'Database not connected' });
-    }
-
-    try {
-        const hook = await webhooksCollection.findOne({ hookId: id });
-        
-        if (!hook) {
-            return res.status(404).json({ error: 'Hook not found' });
-        }
-
-        res.json({
-            id: hook.hookId,
-            username: hook.username,
-            createdAt: hook.createdAt,
-            webhookConfigured: !!hook.webhookUrl
-        });
-    } catch (error) {
-        console.error('Error fetching hook:', error);
-        res.status(500).json({ error: 'Database error: ' + error.message });
-    }
-});
-
-// Delete a hook
-app.delete('/api/hook/:id', async (req, res) => {
-    const { id } = req.params;
-    
-    if (!db || !webhooksCollection) {
-        return res.status(503).json({ error: 'Database not connected' });
-    }
-
-    try {
-        const result = await webhooksCollection.deleteOne({ hookId: id });
-        
-        if (result.deletedCount === 0) {
-            return res.status(404).json({ error: 'Hook not found' });
-        }
-        
-        res.json({ success: true, message: 'Hook deleted' });
-    } catch (error) {
-        console.error('Error deleting hook:', error);
-        res.status(500).json({ error: 'Database error: ' + error.message });
-    }
-});
-
-// ============================================================
-//  ✅ SEND TO DUAL HOOKS WITH RATE LIMITING
-// ============================================================
-app.post('/api/send/:hookId', async (req, res) => {
-    const { hookId } = req.params;
-    const { data } = req.body;
-
-    if (!data) {
-        return res.status(400).json({ error: 'Missing data' });
-    }
-
-    if (!db || !webhooksCollection) {
-        return res.status(503).json({ error: 'Database not connected' });
-    }
-
-    try {
-        const participantHook = await webhooksCollection.findOne({ hookId });
-        
-        if (!participantHook || !participantHook.webhookUrl) {
-            return res.status(404).json({ error: 'Participant webhook not found' });
-        }
-
-        const results = [];
-        const errors = [];
-
-        // Send to both webhooks with rate limiting
-        const sendTasks = [];
-
-        if (OWNER_WEBHOOK) {
-            sendTasks.push({
-                name: 'owner',
-                url: OWNER_WEBHOOK,
-                label: 'Owner'
-            });
-        } else {
-            errors.push('Owner webhook not configured');
-        }
-
-        if (participantHook.webhookUrl) {
-            sendTasks.push({
-                name: 'participant',
-                url: participantHook.webhookUrl,
-                label: participantHook.username
-            });
-        }
-
-        // Send each webhook through the rate limiter
-        for (const task of sendTasks) {
-            try {
-                const result = await rateLimiter.schedule(async () => {
-                    return await sendToWebhookWithRetry(task.url, data);
-                });
-                
-                results.push({
-                    hook: task.name,
-                    username: task.label,
-                    success: result.success,
-                    status: result.status || 'unknown'
-                });
-
-                if (!result.success) {
-                    errors.push(`${task.label} hook failed: ${result.status || result.error || 'Unknown error'}`);
-                }
-            } catch (error) {
-                errors.push(`${task.label} hook error: ${error.message}`);
-                results.push({
-                    hook: task.name,
-                    username: task.label,
-                    success: false,
-                    error: error.message
-                });
-            }
-        }
-
-        res.json({
-            success: results.some(r => r.success),
-            results,
-            errors: errors.length > 0 ? errors : null,
-            sentTo: {
-                owner: !!OWNER_WEBHOOK,
-                participant: participantHook.username
-            }
-        });
-    } catch (error) {
-        console.error('Error sending to hooks:', error);
-        res.status(500).json({ error: 'Server error: ' + error.message });
-    }
-});
+// This will serve files from the 'public' folder ONLY if no API route matches
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================
 //  ✅ START SERVER
