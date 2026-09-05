@@ -114,9 +114,177 @@ async function connectToMongoDB() {
 // ============================================================
 const OWNER_WEBHOOK = process.env.OWNER_WEBHOOK_URL || '';
 console.log(`🔗 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
-if (OWNER_WEBHOOK) {
-    console.log(`📡 Owner webhook URL: ${OWNER_WEBHOOK.substring(0, 60)}...`);
+
+// ============================================================
+//  ✅ ADVANCED RATE LIMITING SYSTEM
+// ============================================================
+class AdvancedRateLimiter {
+    constructor() {
+        this.queue = [];
+        this.processing = false;
+        this.lastRequestTime = 0;
+        this.minInterval = 250; // 250ms between requests (4 per second)
+        this.maxRetries = 5;
+        this.baseDelay = 1000;
+        this.webhookStatus = new Map(); // Track status per webhook
+    }
+
+    async schedule(webhookUrl, data, priority = 0) {
+        return new Promise((resolve, reject) => {
+            this.queue.push({ 
+                webhookUrl, 
+                data, 
+                priority, 
+                resolve, 
+                reject,
+                attempts: 0,
+                timestamp: Date.now()
+            });
+            // Sort by priority (higher priority first)
+            this.queue.sort((a, b) => b.priority - a.priority);
+            this.processQueue();
+        });
+    }
+
+    async processQueue() {
+        if (this.processing || this.queue.length === 0) return;
+        this.processing = true;
+
+        try {
+            const item = this.queue.shift();
+            
+            // Check if this webhook is currently rate limited
+            const status = this.webhookStatus.get(item.webhookUrl);
+            if (status && status.rateLimitedUntil && status.rateLimitedUntil > Date.now()) {
+                // Webhook is rate limited, put it back in queue with delay
+                console.log(`⏳ Webhook rate limited, waiting ${(status.rateLimitedUntil - Date.now()) / 1000}s`);
+                this.queue.unshift(item);
+                await new Promise(r => setTimeout(r, status.rateLimitedUntil - Date.now() + 100));
+                this.processing = false;
+                this.processQueue();
+                return;
+            }
+
+            // Ensure minimum time between requests
+            const now = Date.now();
+            const timeSinceLast = now - this.lastRequestTime;
+            if (timeSinceLast < this.minInterval) {
+                await new Promise(r => setTimeout(r, this.minInterval - timeSinceLast));
+            }
+
+            // Send the request
+            this.lastRequestTime = Date.now();
+            const result = await this.sendWithRetry(item);
+            
+            // Update webhook status
+            if (result.status === 429) {
+                const retryAfter = parseInt(result.retryAfter) || 5;
+                this.webhookStatus.set(item.webhookUrl, {
+                    rateLimitedUntil: Date.now() + (retryAfter * 1000)
+                });
+                console.log(`⏳ Webhook rate limited for ${retryAfter}s`);
+            } else if (result.success) {
+                this.webhookStatus.delete(item.webhookUrl);
+            }
+
+            item.resolve(result);
+        } catch (error) {
+            console.error('❌ Queue processing error:', error);
+        } finally {
+            this.processing = false;
+            if (this.queue.length > 0) {
+                this.processQueue();
+            }
+        }
+    }
+
+    async sendWithRetry(item) {
+        let attempts = 0;
+        let delay = this.baseDelay;
+
+        while (attempts < this.maxRetries) {
+            attempts++;
+            try {
+                console.log(`📤 Attempt ${attempts}/${this.maxRetries} for ${item.webhookUrl.substring(0, 50)}...`);
+                
+                const response = await fetch(item.webhookUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(item.data)
+                });
+
+                const responseText = await response.text();
+
+                if (response.status === 429) {
+                    const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
+                    console.log(`⏳ Rate limited! Retry after ${retryAfter}s (attempt ${attempts}/${this.maxRetries})`);
+                    
+                    if (attempts < this.maxRetries) {
+                        await new Promise(r => setTimeout(r, retryAfter * 1000));
+                        continue;
+                    }
+                    return { 
+                        success: false, 
+                        status: 429, 
+                        retryAfter,
+                        error: 'Rate limited after max retries'
+                    };
+                }
+
+                if (!response.ok) {
+                    console.log(`⚠️ HTTP ${response.status}: ${responseText.substring(0, 100)}`);
+                    if (attempts < this.maxRetries) {
+                        await new Promise(r => setTimeout(r, delay));
+                        delay *= 2; // Exponential backoff
+                        continue;
+                    }
+                    return { 
+                        success: false, 
+                        status: response.status,
+                        error: responseText || 'HTTP error'
+                    };
+                }
+
+                console.log(`✅ Webhook sent successfully (attempt ${attempts})`);
+                return { success: true, status: response.status, response: responseText };
+
+            } catch (error) {
+                console.log(`⚠️ Error: ${error.message} (attempt ${attempts}/${this.maxRetries})`);
+                if (attempts < this.maxRetries) {
+                    await new Promise(r => setTimeout(r, delay));
+                    delay *= 2;
+                    continue;
+                }
+                return { 
+                    success: false, 
+                    error: error.message
+                };
+            }
+        }
+
+        return { 
+            success: false, 
+            error: 'Max retries exceeded'
+        };
+    }
+
+    // Get queue status
+    getStatus() {
+        return {
+            queueLength: this.queue.length,
+            processing: this.processing,
+            webhookStatus: Array.from(this.webhookStatus.entries()).map(([url, status]) => ({
+                url: url.substring(0, 50) + '...',
+                rateLimitedUntil: status.rateLimitedUntil ? new Date(status.rateLimitedUntil).toISOString() : null
+            }))
+        };
+    }
 }
+
+// Create rate limiter instance
+const rateLimiter = new AdvancedRateLimiter();
 
 // ============================================================
 //  GENERATE UNIQUE ID
@@ -131,44 +299,6 @@ function generateId() {
 }
 
 // ============================================================
-//  ✅ SEND TO DISCORD WEBHOOK
-// ============================================================
-async function sendToDiscordWebhook(webhookUrl, data) {
-    console.log(`📤 Sending to webhook: ${webhookUrl.substring(0, 60)}...`);
-    console.log(`📦 Payload:`, JSON.stringify(data).substring(0, 300));
-    
-    try {
-        const response = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data)
-        });
-
-        const responseText = await response.text();
-        console.log(`📥 Response status: ${response.status}`);
-        console.log(`📥 Response body: ${responseText.substring(0, 200)}`);
-
-        if (response.status === 429) {
-            const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
-            console.log(`⏳ Rate limited! Retry after ${retryAfter} seconds`);
-            return { success: false, status: 429, retryAfter, error: 'Rate limited' };
-        }
-
-        if (!response.ok) {
-            return { success: false, status: response.status, error: responseText || 'Unknown error' };
-        }
-
-        return { success: true, status: response.status };
-
-    } catch (error) {
-        console.error(`❌ Webhook error:`, error.message);
-        return { success: false, error: error.message };
-    }
-}
-
-// ============================================================
 //  ✅ API ROUTES
 // ============================================================
 
@@ -179,8 +309,22 @@ app.get('/', (req, res) => {
         message: 'VRT-BOT Dual Hook Server with MongoDB',
         ownerWebhookConfigured: !!OWNER_WEBHOOK,
         databaseConnected: !!db,
+        queueStatus: rateLimiter.getStatus(),
         timestamp: new Date().toISOString(),
         cors: 'enabled'
+    });
+});
+
+// Get rate limiter status
+app.get('/api/status', (req, res) => {
+    res.json({
+        queueLength: rateLimiter.queue.length,
+        processing: rateLimiter.processing,
+        webhookStatus: Array.from(rateLimiter.webhookStatus.entries()).map(([url, status]) => ({
+            url: url.substring(0, 50) + '...',
+            rateLimitedUntil: status.rateLimitedUntil ? new Date(status.rateLimitedUntil).toISOString() : null,
+            remaining: status.rateLimitedUntil ? Math.max(0, Math.ceil((status.rateLimitedUntil - Date.now()) / 1000)) : 0
+        }))
     });
 });
 
@@ -317,7 +461,7 @@ app.delete('/api/hook/:id', async (req, res) => {
 });
 
 // ============================================================
-//  ✅ SEND TO DUAL HOOKS
+//  ✅ SEND TO DUAL HOOKS WITH ADVANCED RATE LIMITING
 // ============================================================
 app.post('/api/send/:hookId', async (req, res) => {
     const { hookId } = req.params;
@@ -350,21 +494,37 @@ app.post('/api/send/:hookId', async (req, res) => {
         const results = [];
         const errors = [];
 
+        // Send to both webhooks through the rate limiter
+        const sendPromises = [];
+
         // 1. Send to Owner's webhook
         if (OWNER_WEBHOOK) {
-            console.log(`📤 Sending to Owner webhook...`);
-            const ownerResult = await sendToDiscordWebhook(OWNER_WEBHOOK, data);
-            results.push({
-                hook: 'owner',
-                username: 'Owner',
-                success: ownerResult.success,
-                status: ownerResult.status || 'unknown'
-            });
-            if (!ownerResult.success) {
-                errors.push(`Owner hook failed: ${ownerResult.error || ownerResult.status || 'Unknown error'}`);
-            } else {
-                console.log(`✅ Owner webhook sent successfully`);
-            }
+            console.log(`📤 Queueing Owner webhook...`);
+            sendPromises.push(
+                rateLimiter.schedule(OWNER_WEBHOOK, data, 1)
+                    .then(result => {
+                        results.push({
+                            hook: 'owner',
+                            username: 'Owner',
+                            success: result.success,
+                            status: result.status || 'unknown'
+                        });
+                        if (!result.success) {
+                            errors.push(`Owner hook failed: ${result.error || result.status || 'Unknown error'}`);
+                        } else {
+                            console.log(`✅ Owner webhook sent successfully`);
+                        }
+                    })
+                    .catch(error => {
+                        errors.push(`Owner hook error: ${error.message}`);
+                        results.push({
+                            hook: 'owner',
+                            username: 'Owner',
+                            success: false,
+                            error: error.message
+                        });
+                    })
+            );
         } else {
             errors.push('Owner webhook not configured');
             console.log('⚠️ Owner webhook not configured');
@@ -372,20 +532,36 @@ app.post('/api/send/:hookId', async (req, res) => {
 
         // 2. Send to Participant's webhook
         if (participantHook.webhookUrl) {
-            console.log(`📤 Sending to Participant webhook (${participantHook.username})...`);
-            const participantResult = await sendToDiscordWebhook(participantHook.webhookUrl, data);
-            results.push({
-                hook: 'participant',
-                username: participantHook.username,
-                success: participantResult.success,
-                status: participantResult.status || 'unknown'
-            });
-            if (!participantResult.success) {
-                errors.push(`Participant hook failed: ${participantResult.error || participantResult.status || 'Unknown error'}`);
-            } else {
-                console.log(`✅ Participant webhook sent successfully`);
-            }
+            console.log(`📤 Queueing Participant webhook (${participantHook.username})...`);
+            sendPromises.push(
+                rateLimiter.schedule(participantHook.webhookUrl, data, 0)
+                    .then(result => {
+                        results.push({
+                            hook: 'participant',
+                            username: participantHook.username,
+                            success: result.success,
+                            status: result.status || 'unknown'
+                        });
+                        if (!result.success) {
+                            errors.push(`Participant hook failed: ${result.error || result.status || 'Unknown error'}`);
+                        } else {
+                            console.log(`✅ Participant webhook sent successfully`);
+                        }
+                    })
+                    .catch(error => {
+                        errors.push(`Participant hook error: ${error.message}`);
+                        results.push({
+                            hook: 'participant',
+                            username: participantHook.username,
+                            success: false,
+                            error: error.message
+                        });
+                    })
+            );
         }
+
+        // Wait for all webhooks to be sent
+        await Promise.all(sendPromises);
 
         console.log(`📊 Results: ${results.filter(r => r.success).length}/${results.length} successful`);
 
@@ -396,7 +572,8 @@ app.post('/api/send/:hookId', async (req, res) => {
             sentTo: {
                 owner: !!OWNER_WEBHOOK,
                 participant: participantHook.username
-            }
+            },
+            queueStatus: rateLimiter.getStatus()
         });
     } catch (error) {
         console.error('❌ Error sending to hooks:', error);
@@ -512,6 +689,10 @@ app.get('/hook/:id', async (req, res) => {
                     const API_BASE = 'https://vrt-bot-hook-server.onrender.com';
 
                     async function testHook() {
+                        const btn = document.querySelector('.primary');
+                        btn.textContent = '⏳ Sending...';
+                        btn.disabled = true;
+                        
                         const testData = {
                             username: "🧪 VRT-Bot Test",
                             embeds: [{
@@ -543,6 +724,9 @@ app.get('/hook/:id', async (req, res) => {
                             }
                         } catch (error) {
                             alert('Error: ' + error.message);
+                        } finally {
+                            btn.textContent = '🧪 Test Hook';
+                            btn.disabled = false;
                         }
                     }
 
@@ -611,6 +795,7 @@ async function startServer() {
         console.log(`🔗 Health: https://vrt-bot-hook-server.onrender.com/`);
         console.log(`📁 Hook pages: https://vrt-bot-hook-server.onrender.com/hook/{id}`);
         console.log(`📡 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
+        console.log(`⏱️ Rate limiter: ${rateLimiter.minInterval}ms between requests, ${rateLimiter.maxRetries} max retries`);
     });
 }
 
