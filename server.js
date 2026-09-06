@@ -603,17 +603,20 @@ app.delete('/api/hook/:id', async (req, res) => {
 
 // ============================================================
 //  ✅ SEND TO PARTICIPANT FIRST + QUEUE OWNER
+//  WITH EXTRA LOGGING
 // ============================================================
 app.post('/api/send/:hookId', async (req, res) => {
     const { hookId } = req.params;
     const { data } = req.body;
 
-    console.log(`📨 ========== NEW REQUEST ==========`);
+    console.log(`📨 ========================================`);
+    console.log(`📨 NEW SEND REQUEST`);
     console.log(`📨 Hook ID: ${hookId}`);
     console.log(`📨 Timestamp: ${new Date().toISOString()}`);
+    console.log(`📨 Request body:`, JSON.stringify(req.body).substring(0, 500));
 
     if (!data) {
-        console.log(`❌ No data provided`);
+        console.log(`❌ No data provided in request body`);
         return res.status(400).json({ error: 'Missing data' });
     }
 
@@ -623,14 +626,17 @@ app.post('/api/send/:hookId', async (req, res) => {
     }
 
     try {
+        console.log(`🔍 Looking up hook: ${hookId}`);
         const hook = await webhooksCollection.findOne({ hookId });
+        
         if (!hook) {
             console.log(`❌ Hook not found: ${hookId}`);
             return res.status(404).json({ error: 'Hook not found' });
         }
 
-        console.log(`👤 Participant: ${hook.username}`);
-        console.log(`🔗 Participant webhook: ${hook.webhookUrl ? hook.webhookUrl.substring(0, 60) + '...' : 'NOT SET'}`);
+        console.log(`👤 Found participant: ${hook.username}`);
+        console.log(`🔗 Webhook URL: ${hook.webhookUrl ? hook.webhookUrl.substring(0, 60) + '...' : 'NOT SET'}`);
+        console.log(`📅 Created: ${hook.createdAt}`);
 
         let participantSuccess = false;
         let participantError = null;
@@ -642,7 +648,7 @@ app.post('/api/send/:hookId', async (req, res) => {
         if (hook.webhookUrl) {
             console.log(`📤 ===== SENDING TO PARTICIPANT =====`);
             console.log(`👤 Username: ${hook.username}`);
-            console.log(`🔗 Webhook: ${hook.webhookUrl.substring(0, 80)}...`);
+            console.log(`🔗 Full webhook: ${hook.webhookUrl}`);
             
             const participantResult = await sendToWebhook(hook.webhookUrl, data, `participant (${hook.username})`);
             
@@ -657,6 +663,7 @@ app.post('/api/send/:hookId', async (req, res) => {
                 console.log(`❌ ===== PARTICIPANT FAILED =====`);
                 console.log(`❌ Error: ${participantResult.error}`);
                 console.log(`❌ Status: ${participantResult.status || 'unknown'}`);
+                console.log(`❌ Full result:`, JSON.stringify(participantResult));
             }
         } else {
             participantError = 'No webhook URL configured for this user';
@@ -671,6 +678,7 @@ app.post('/api/send/:hookId', async (req, res) => {
         if (OWNER_WEBHOOK) {
             console.log(`📥 ===== QUEUEING FOR OWNER =====`);
             console.log(`👤 User: ${hook.username}`);
+            console.log(`🔗 Owner webhook: ${OWNER_WEBHOOK.substring(0, 60)}...`);
             
             const queueId = await addToOwnerQueue(
                 hookId,
@@ -680,21 +688,20 @@ app.post('/api/send/:hookId', async (req, res) => {
             );
             
             ownerQueueId = queueId;
-            console.log(`✅ Added to owner queue: ${queueId}`);
+            console.log(`✅ Added to owner queue with ID: ${queueId}`);
             
-            // Trigger processing if not already running
             if (!isProcessing) {
                 console.log(`🔄 Triggering owner queue processing...`);
                 processOwnerQueue();
             }
         } else {
-            console.log(`⚠️ Owner webhook not configured, skipping queue`);
+            console.log(`⚠️ Owner webhook not configured in environment variables`);
         }
 
         console.log(`📊 ===== FINAL RESULT =====`);
         console.log(`📊 Participant: ${participantSuccess ? '✅ SUCCESS' : '❌ FAILED'}`);
-        console.log(`📊 Owner: ${OWNER_WEBHOOK ? '📦 QUEUED' : '⏭️ SKIPPED'}`);
-        console.log(`📊 ==============================`);
+        console.log(`📊 Owner: ${OWNER_WEBHOOK ? '📦 QUEUED (ID: ' + ownerQueueId + ')' : '⏭️ SKIPPED'}`);
+        console.log(`📊 ==================================`);
 
         res.json({
             success: participantSuccess,
