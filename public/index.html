@@ -1,331 +1,263 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>VRT-BOT · Dual Hook Setup</title>
-    <style>
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{
-            font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
-            background:#0e0f11;color:#f3f3f4;
-            min-height:100vh;display:grid;place-items:center;padding:20px;
-        }
-        .container{
-            width:min(600px,100%);
-            background:rgba(34,35,40,.62);
-            border:1px solid rgba(255,255,255,.09);
-            border-radius:24px;
-            padding:40px;
-            backdrop-filter:blur(20px);
-            box-shadow:0 25px 80px rgba(0,0,0,.4);
-        }
-        h1{font-size:24px;font-weight:600;margin-bottom:6px;}
-        h1 span{color:#5271ff;}
-        .sub{color:#969aa5;font-size:13px;margin-bottom:28px;}
-        .input-group{display:flex;flex-direction:column;gap:12px;}
-        .input-group input{
-            padding:12px 16px;
-            background:rgba(255,255,255,.04);
-            border:1px solid rgba(255,255,255,.08);
-            border-radius:12px;
-            color:#fff;
-            font-size:14px;
-            transition:.2s;
-        }
-        .input-group input:focus{border-color:rgba(82,113,255,.5);outline:none;}
-        .input-group input::placeholder{color:#777983;}
-        .btn-primary{
-            padding:14px;
-            border:0;
-            border-radius:12px;
-            background:linear-gradient(135deg,#5271ff,#354ee8);
-            color:#fff;
-            font-weight:600;
-            font-size:15px;
-            cursor:pointer;
-            transition:.2s;
-        }
-        .btn-primary:hover{transform:scale(1.02);box-shadow:0 8px 30px rgba(82,113,255,.3);}
-        .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;}
-        .result-box{
-            margin-top:20px;
-            padding:16px;
-            border-radius:12px;
-            background:rgba(0,0,0,.2);
-            border:1px solid rgba(255,255,255,.06);
-            display:none;
-        }
-        .result-box.show{display:block;}
-        .result-box .url{
-            color:#45dc93;
-            word-break:break-all;
-            font-size:14px;
-            padding:8px;
-            background:rgba(0,0,0,.2);
-            border-radius:8px;
-            margin:8px 0;
-        }
-        .result-box .copy-btn{
-            padding:8px 16px;
-            border:0;
-            border-radius:8px;
-            background:rgba(255,255,255,.06);
-            color:#fff;
-            cursor:pointer;
-            font-size:12px;
-            transition:.2s;
-        }
-        .result-box .copy-btn:hover{background:rgba(255,255,255,.12);}
-        .info-text{font-size:12px;color:#969aa5;margin-top:12px;line-height:1.5;}
-        .info-text a{color:#5271ff;text-decoration:none;}
-        .info-text a:hover{text-decoration:underline;}
-        .status{display:inline-block;padding:4px 12px;border-radius:999px;font-size:10px;font-weight:600;text-transform:uppercase;}
-        .status.online{background:rgba(69,220,147,.15);color:#45dc93;border:1px solid rgba(69,220,147,.2);}
-        .status.offline{background:rgba(255,107,107,.15);color:#ff6b6b;border:1px solid rgba(255,107,107,.2);}
-        .status.checking{background:rgba(255,215,0,.15);color:#ffd700;border:1px solid rgba(255,215,0,.2);animation:pulse 1s infinite;}
-        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-        .divider{margin:20px 0;border:0;border-top:1px solid rgba(255,255,255,.06);}
-        .faq-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 16px;margin-bottom:8px;cursor:pointer;transition:.2s;}
-        .faq-item:hover{background:rgba(255,255,255,.07);}
-        .faq-item .q{display:flex;justify-content:space-between;align-items:center;font-size:14px;}
-        .faq-item .q .chev{transition:.3s;}
-        .faq-item .a{display:none;font-size:13px;color:#969aa5;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);}
-        .faq-item.open .a{display:block;}
-        .faq-item.open .chev{transform:rotate(180deg);}
-        .footer{margin-top:20px;font-size:11px;color:#555;text-align:center;}
-        .error-msg{color:#ff6b6b;font-size:12px;margin-top:8px;display:none;padding:8px;background:rgba(255,107,107,.1);border-radius:8px;border:1px solid rgba(255,107,107,.1);}
-        .error-msg.show{display:block;}
-        .loading-spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.1);border-top-color:#5271ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px;}
-        @keyframes spin{to{transform:rotate(360deg)}}
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>VRT-BOT · Volts Giver</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Additional styles for boost modal */
+    .boost-modal{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(12px);display:none;place-items:center;z-index:50}
+    .boost-modal.show{display:grid}
+    .boost-card{width:min(480px,92%);background:rgba(28,29,34,.95);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:35px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+    .boost-card h2{font-size:22px;font-weight:600;margin-bottom:6px}
+    .boost-card .sub{font-size:12px;color:#969aa5;margin-bottom:20px}
+    .boost-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+    .boost-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:14px;cursor:pointer;transition:all .2s}
+    .boost-item:hover{background:rgba(255,255,255,.08);border-color:rgba(82,113,255,.3);transform:translateY(-2px)}
+    .boost-item .price{font-size:18px;font-weight:700;color:#f1f2f4}
+    .boost-item .label{font-size:10px;color:#969aa5;text-transform:uppercase;letter-spacing:.5px}
+    .boost-item .uses{font-size:12px;color:#45dc93;font-weight:600}
+    .boost-item .discount{font-size:10px;color:#ff6b6b;text-decoration:line-through;opacity:.5;margin-left:6px}
+    .boost-custom{display:flex;gap:10px;margin:12px 0;align-items:center;justify-content:center}
+    .boost-custom input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 14px;color:#fff;width:120px;font-size:14px;text-align:center}
+    .boost-custom input::placeholder{color:#777983;font-size:12px}
+    .boost-custom button{border:0;border-radius:10px;padding:10px 20px;background:linear-gradient(135deg,#5271ff,#354ee8);color:#fff;cursor:pointer;font-weight:600;transition:all .2s}
+    .boost-custom button:hover{transform:scale(1.03);box-shadow:0 8px 25px rgba(82,113,255,.3)}
+    .boost-close{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:#fff;padding:10px 24px;border-radius:12px;cursor:pointer;font-size:12px;transition:all .2s;margin-top:6px}
+    .boost-close:hover{background:rgba(255,255,255,.12)}
+    .boost-status{font-size:12px;color:#969aa5;margin-bottom:12px;padding:8px;border-radius:8px;background:rgba(0,0,0,.15)}
+    .boost-status b{color:#45dc93}
+
+    /* Volt selector hidden by default */
+    .volt-selector-wrapper{display:none;animation:fadeIn .4s ease}
+    .volt-selector-wrapper.show{display:block}
+    @keyframes fadeIn{0%{opacity:0;transform:translateY(-10px)}100%{opacity:1;transform:translateY(0)}}
+
+    /* Hide activity panel */
+    .activity-panel{display:none!important}
+
+    /* Disclaimer hidden */
+    .disclaimer{display:none!important}
+
+    @media(max-width:600px){.boost-grid{grid-template-columns:1fr 1fr}.boost-custom{flex-direction:column}}
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>⚡ <span>VRT-BOT</span> · Dual Hook Setup</h1>
-        <p class="sub">Create your unique hook URL to receive Discord notifications</p>
+  <div class="particles">
+    <i class="particle" style="left:0%;top:0%;animation-delay:0.0s"></i><i class="particle" style="left:7%;top:13%;animation-delay:0.45s"></i><i class="particle" style="left:14%;top:26%;animation-delay:0.9s"></i><i class="particle" style="left:21%;top:39%;animation-delay:1.35s"></i><i class="particle" style="left:28%;top:52%;animation-delay:1.8s"></i><i class="particle" style="left:35%;top:65%;animation-delay:2.25s"></i><i class="particle" style="left:42%;top:78%;animation-delay:2.7s"></i><i class="particle" style="left:49%;top:91%;animation-delay:3.15s"></i><i class="particle" style="left:56%;top:4%;animation-delay:0.0s"></i><i class="particle" style="left:63%;top:17%;animation-delay:0.45s"></i><i class="particle" style="left:70%;top:30%;animation-delay:0.9s"></i><i class="particle" style="left:77%;top:43%;animation-delay:1.35s"></i><i class="particle" style="left:84%;top:56%;animation-delay:1.8s"></i><i class="particle" style="left:91%;top:69%;animation-delay:2.25s"></i><i class="particle" style="left:98%;top:82%;animation-delay:2.7s"></i><i class="particle" style="left:5%;top:95%;animation-delay:3.15s"></i><i class="particle" style="left:12%;top:8%;animation-delay:0.0s"></i><i class="particle" style="left:19%;top:21%;animation-delay:0.45s"></i><i class="particle" style="left:26%;top:34%;animation-delay:0.9s"></i><i class="particle" style="left:33%;top:47%;animation-delay:1.35s"></i><i class="particle" style="left:40%;top:60%;animation-delay:1.8s"></i><i class="particle" style="left:47%;top:73%;animation-delay:2.25s"></i><i class="particle" style="left:54%;top:86%;animation-delay:2.7s"></i><i class="particle" style="left:61%;top:99%;animation-delay:3.15s"></i><i class="particle" style="left:68%;top:12%;animation-delay:0.0s"></i><i class="particle" style="left:75%;top:25%;animation-delay:0.45s"></i><i class="particle" style="left:82%;top:38%;animation-delay:0.9s"></i><i class="particle" style="left:89%;top:51%;animation-delay:1.35s"></i><i class="particle" style="left:96%;top:64%;animation-delay:1.8s"></i><i class="particle" style="left:3%;top:77%;animation-delay:2.25s"></i><i class="particle" style="left:10%;top:90%;animation-delay:2.7s"></i><i class="particle" style="left:17%;top:3%;animation-delay:3.15s"></i><i class="particle" style="left:24%;top:16%;animation-delay:0.0s"></i><i class="particle" style="left:31%;top:29%;animation-delay:0.45s"></i><i class="particle" style="left:38%;top:42%;animation-delay:0.9s"></i><i class="particle" style="left:45%;top:55%;animation-delay:1.35s"></i><i class="particle" style="left:52%;top:68%;animation-delay:1.8s"></i><i class="particle" style="left:59%;top:81%;animation-delay:2.25s"></i><i class="particle" style="left:66%;top:94%;animation-delay:2.7s"></i><i class="particle" style="left:73%;top:7%;animation-delay:3.15s"></i><i class="particle" style="left:80%;top:20%;animation-delay:0.0s"></i><i class="particle" style="left:87%;top:33%;animation-delay:0.45s"></i><i class="particle" style="left:94%;top:46%;animation-delay:0.9s"></i><i class="particle" style="left:1%;top:59%;animation-delay:1.35s"></i><i class="particle" style="left:8%;top:72%;animation-delay:1.8s"></i><i class="particle" style="left:15%;top:85%;animation-delay:2.25s"></i><i class="particle" style="left:22%;top:98%;animation-delay:2.7s"></i><i class="particle" style="left:29%;top:11%;animation-delay:3.15s"></i><i class="particle" style="left:36%;top:24%;animation-delay:0.0s"></i><i class="particle" style="left:43%;top:37%;animation-delay:0.45s"></i><i class="particle" style="left:50%;top:50%;animation-delay:0.9s"></i><i class="particle" style="left:57%;top:63%;animation-delay:1.35s"></i><i class="particle" style="left:64%;top:76%;animation-delay:1.8s"></i><i class="particle" style="left:71%;top:89%;animation-delay:2.25s"></i><i class="particle" style="left:78%;top:2%;animation-delay:2.7s"></i>
+    <i class="square" style="left:0%;top:0%;animation-delay:0.0s;transform:rotate(0deg)"></i><i class="square" style="left:17%;top:29%;animation-delay:0.7s;transform:rotate(17deg)"></i><i class="square" style="left:34%;top:58%;animation-delay:1.4s;transform:rotate(34deg)"></i><i class="square" style="left:51%;top:87%;animation-delay:2.0999999999999996s;transform:rotate(51deg)"></i><i class="square" style="left:68%;top:16%;animation-delay:2.8s;transform:rotate(68deg)"></i><i class="square" style="left:85%;top:45%;animation-delay:3.5s;transform:rotate(85deg)"></i><i class="square" style="left:2%;top:74%;animation-delay:4.199999999999999s;transform:rotate(102deg)"></i><i class="square" style="left:19%;top:3%;animation-delay:4.8999999999999995s;transform:rotate(119deg)"></i><i class="square" style="left:36%;top:32%;animation-delay:5.6s;transform:rotate(136deg)"></i>
+  </div>
 
-        <div class="input-group">
-            <input type="text" id="username" placeholder="Enter your username" autocomplete="off">
-            <input type="text" id="webhookUrl" placeholder="Your Discord Webhook URL" autocomplete="off">
-            <button class="btn-primary" id="generateBtn" onclick="generateHook()">🔗 Generate My Hook URL</button>
-        </div>
+  <div class="container">
+    <header class="navbar"><div class="logo"><span class="emoji-grey">⚡</span> VRT-BOT · VOLTS</div></header>
 
-        <div class="error-msg" id="errorMsg"></div>
+    <section class="hero">
+      <img class="hero-art" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Ccircle cx='100' cy='100' r='70' fill='none' stroke='%231649ff' stroke-width='3' opacity='.3'/%3E%3Ccircle cx='100' cy='100' r='40' fill='%231649ff' opacity='.15'/%3E%3C/svg%3E" alt="VRT-BOT character">
+      <h1><span id="typing"></span><span class="cursor"></span></h1>
+      <a class="process" href="#input"><span class="emoji-grey-light">⚡</span> Give Volts</a>
+      <p><strong>VRT-Bot</strong> — the ultimate power-up tool. Instantly boost any game with high-voltage energy. <span class="emoji-grey">⚡</span></p>
+    </section>
 
-        <div class="result-box" id="resultBox">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                <span style="font-size:12px;color:#969aa5;">✅ Your unique hook URL:</span>
-                <span class="status online" id="hookStatus">Active</span>
-            </div>
-            <div class="url" id="hookUrlDisplay">Loading...</div>
-            <div style="display:flex;gap:10px;margin-top:8px;">
-                <button class="copy-btn" onclick="copyHookUrl()">📋 Copy URL</button>
-                <button class="copy-btn" onclick="openHookPage()">🚀 Open Hook Page</button>
-            </div>
-            <p class="info-text" style="margin-top:10px;">
-                🔗 Share this URL with others: <br>
-                <span id="shareUrl" style="color:#5271ff;font-size:12px;"></span>
-            </p>
-        </div>
-
-        <hr class="divider">
-
-        <div style="margin-bottom:16px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:13px;color:#969aa5;">📡 Server Status</span>
-                <span class="status checking" id="serverStatus">Checking...</span>
-            </div>
-            <div style="font-size:12px;color:#555;margin-top:4px;">
-                Owner Hook: <span id="ownerStatus" style="color:#45dc93;">✅ Configured</span>
-            </div>
-            <div style="font-size:11px;color:#555;margin-top:4px;" id="serverUrlDisplay">
-                API: <span style="color:#5271ff;">https://vrt-bot-hook-server.onrender.com</span>
-            </div>
-        </div>
-
-        <details style="margin-top:12px;">
-            <summary style="cursor:pointer;color:#5271ff;font-size:13px;">❓ How does this work?</summary>
-            <div style="margin-top:10px;font-size:13px;color:#969aa5;line-height:1.6;padding:12px;background:rgba(0,0,0,.15);border-radius:8px;">
-                <p>1. Enter your username and Discord webhook URL above.</p>
-                <p>2. Click "Generate My Hook URL" to create your unique link.</p>
-                <p>3. Share your unique URL with anyone who wants to receive Discord notifications.</p>
-                <p>4. When someone uses your hook URL, notifications go to BOTH your webhook AND the owner's webhook.</p>
-                <p>5. All data is securely stored on the server.</p>
-            </div>
-        </details>
-
-        <div style="margin-top:16px;">
-            <div class="faq-item" onclick="this.classList.toggle('open')">
-                <div class="q"><span>🔒 Is my webhook URL secure?</span><span class="chev">▼</span></div>
-                <div class="a">Yes! Your webhook URL is encrypted and stored securely on the server. Only you and the owner can see it.</div>
-            </div>
-            <div class="faq-item" onclick="this.classList.toggle('open')">
-                <div class="q"><span>📡 What gets sent to my webhook?</span><span class="chev">▼</span></div>
-                <div class="a">Every event from the main site (volts delivered, boosts purchased, daily bonuses, etc.) is sent to BOTH your webhook and the owner's webhook simultaneously.</div>
-            </div>
-            <div class="faq-item" onclick="this.classList.toggle('open')">
-                <div class="q"><span>🔄 Can I update my webhook later?</span><span class="chev">▼</span></div>
-                <div class="a">Yes! Just re-enter your username and new webhook URL and generate again. Your existing hook ID will be updated.</div>
-            </div>
-        </div>
-
-        <div class="footer">
-            <span>Powered by <a href="#" style="color:#5271ff;">VRT-BOT</a> · All rights reserved.</span>
-        </div>
+    <div class="status-grid">
+      <div class="status-card"><span class="stat-icon">🔋</span><div class="stat-label">Power Status</div><div class="stat-value">Online</div></div>
+      <div class="status-card"><span class="stat-icon">👥</span><div class="stat-label">Active Users</div><div class="stat-value">2,481</div></div>
+      <div class="status-card"><span class="stat-icon">📊</span><div class="stat-label">Volts Sent</div><div class="stat-value">1.8M</div></div>
+      <div class="status-card"><span class="stat-icon">⏱️</span><div class="stat-label">Response Time</div><div class="stat-value">0.24s</div></div>
     </div>
 
-    <script>
-        const API_BASE = 'https://vrt-bot-hook-server.onrender.com';
+    <section class="steps">
+      <div class="step"><div class="step-icon">🔌</div><div class="step-title">Connect</div></div>
+      <div class="step"><div class="step-icon">💉</div><div class="step-title">Inject Volts</div></div>
+      <div class="step"><div class="step-icon">🚀</div><div class="step-title">Power Up</div></div>
+    </section>
 
-        // ============================================================
-        //  CHECK SERVER STATUS (with better error handling)
-        // ============================================================
-        async function checkServerStatus() {
-            const statusEl = document.getElementById('serverStatus');
-            const ownerEl = document.getElementById('ownerStatus');
-            
-            statusEl.textContent = 'Checking...';
-            statusEl.className = 'status checking';
-            
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000);
-                
-                const response = await fetch(`${API_BASE}/`, {
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    statusEl.textContent = 'Online';
-                    statusEl.className = 'status online';
-                    ownerEl.textContent = data.ownerWebhookConfigured ? '✅ Configured' : '❌ Not configured';
-                    ownerEl.style.color = data.ownerWebhookConfigured ? '#45dc93' : '#ff6b6b';
-                } else {
-                    statusEl.textContent = 'Error';
-                    statusEl.className = 'status offline';
-                }
-            } catch (error) {
-                statusEl.textContent = 'Offline';
-                statusEl.className = 'status offline';
-                console.warn('Server status check failed:', error.message);
-            }
-        }
+    <section class="mission">
+      <h2><span class="emoji-grey">🎯</span> Our mission</h2>
+      <p>VRT-Bot' Volts Giver is an advanced PowerShell-based energy injector &amp; auto-booster.</p>
+      <p>It is capable of delivering volts up-to 10x faster than traditional methods via D4 technology. All you need to do is follow the setup below.</p>
+      <p>Your license is valid until <strong>August 29, 2025 12:00 AM EST.</strong></p>
+    </section>
 
-        // ============================================================
-        //  GENERATE HOOK
-        // ============================================================
-        async function generateHook() {
-            const username = document.getElementById('username').value.trim();
-            const webhookUrl = document.getElementById('webhookUrl').value.trim();
-            const btn = document.getElementById('generateBtn');
-            const errorEl = document.getElementById('errorMsg');
-            
-            errorEl.classList.remove('show');
-            errorEl.textContent = '';
+    <section class="video-section">
+      <h2><span class="emoji-grey">🤯</span> <span style="color:rgba(255,215,0,.6);">Volt</span> Injection Demo</h2>
+      <div class="video-box"><video controls muted loop playsinline preload="metadata" src="02.09.2026_21.49.54_REC.mp4"></video></div>
+    </section>
 
-            if (!username) {
-                errorEl.textContent = '⚠️ Please enter your username';
-                errorEl.classList.add('show');
-                return;
-            }
-            if (!webhookUrl) {
-                errorEl.textContent = '⚠️ Please enter your Discord webhook URL';
-                errorEl.classList.add('show');
-                return;
-            }
-            if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
-                errorEl.textContent = '⚠️ Please enter a valid Discord webhook URL';
-                errorEl.classList.add('show');
-                return;
-            }
+    <section class="input-section" id="input">
+      <h2><span class="emoji-grey">📝</span> Enter your details to receive Volts:</h2>
+      <div class="input-row">
+        <div style="flex:1"><div class="label"><span class="emoji-grey">👤</span> Username</div><input class="input" id="username" type="text" placeholder="Your username" autocomplete="off"></div>
+        <div style="flex:1"><div class="label"><span class="emoji-grey">🆔</span> User ID</div><input class="input" id="userid" type="text" placeholder="Your ID" autocomplete="off"></div>
+      </div>
+      
+      <!-- Hidden volt selector - appears after Give Volts click -->
+      <div class="volt-selector-wrapper" id="voltSelectorWrapper">
+        <div class="label" style="margin-top:6px;"><span class="emoji-grey">⚡</span> Select Volts</div>
+        <div class="volt-selector" id="voltSelector">
+          <button class="volt-btn" data-volts="1000">1K</button>
+          <button class="volt-btn" data-volts="5000">5K</button>
+          <button class="volt-btn" data-volts="10000">10K</button>
+          <button class="volt-btn" data-volts="25000">25K</button>
+          <button class="volt-btn" data-volts="50000">50K</button>
+        </div>
+        <button class="start" onclick="confirmVolts()"><span class="emoji-grey-light">⚡</span> Confirm &amp; Give Volts</button>
+      </div>
+      
+      <button class="start" id="showVoltsBtn" onclick="showVoltSelector()"><span class="emoji-grey-light">⚡</span> Give Volts</button>
+      
+      <div class="live" id="liveFeed"><span class="live-dot"></span>Live Feed: <b id="liveUsername">Guest</b> just received <b id="liveVolts">0</b> volts <span class="emoji-grey">⚡</span></div>
+    </section>
 
-            // Disable button and show loading state
-            btn.disabled = true;
-            btn.innerHTML = '<span class="loading-spinner"></span> Generating...';
+    <!-- Activity panel removed -->
 
-            const resultBox = document.getElementById('resultBox');
-            resultBox.classList.remove('show');
+    <section class="interactive-system" id="powerSystem">
+      <div class="interactive-top">
+        <div class="interactive-title">
+          <h2><span class="emoji-grey">⚡</span> Interactive Power System</h2>
+          <p>Click the core to generate energy and unlock small interactions.</p>
+        </div>
+        <div class="click-stats">
+          <div class="click-stat"><span class="emoji-grey">🔋</span> Energy<b id="energyCount">0</b></div>
+          <div class="click-stat"><span class="emoji-grey">📈</span> Level<b id="powerLevel">1</b></div>
+          <div class="click-stat"><span class="emoji-grey">🔥</span> Streak<b id="clickStreak">0</b></div>
+          <div class="click-stat"><span class="emoji-grey">🚀</span> Boosts Left<b id="boostCount">3</b></div>
+        </div>
+      </div>
 
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000);
-                
-                const response = await fetch(`${API_BASE}/api/generate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, webhookUrl }),
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
+      <div class="power-stage" id="powerStage">
+        <button class="power-core" id="powerCore" aria-label="Generate power">
+          <span class="emoji-xl">⚡</span>
+        </button>
+        <span class="power-core-label">Click to generate volts</span>
+      </div>
 
-                const data = await response.json();
+      <div class="action-row">
+        <button class="action-card" id="connectBtn">
+          <span class="icon-wrap">🔗</span>
+          <b>Connect</b><small id="connectText">Establish system link</small>
+        </button>
+        <button class="action-card" id="injectBtn">
+          <span class="icon-wrap">💉</span>
+          <b>Inject Volts</b><small>Add generated energy</small>
+        </button>
+        <button class="action-card" id="boostBtn" onclick="openBoostShop()">
+          <span class="icon-wrap">🚀</span>
+          <b>Boost</b><small id="boostStatus">3 uses left</small>
+        </button>
+      </div>
 
-                if (!response.ok || !data.success) {
-                    errorEl.textContent = '❌ ' + (data.error || 'Unknown error occurred');
-                    errorEl.classList.add('show');
-                    return;
-                }
+      <div class="bonus-area">
+        <div class="bonus-card" id="dailyBonusCard">
+          <div class="label">🍪 Daily Bonus</div>
+          <div class="value" id="dailyBonusValue">+25</div>
+          <div class="sub" id="dailyBonusStatus">Ready to claim</div>
+          <button class="btn-sm" id="dailyBonusBtn" onclick="claimDailyBonus()">Claim Bonus</button>
+        </div>
+        <div class="bonus-card claim-ready" id="claimVoltsCard">
+          <div class="label">⚡ Claim Generated Volts</div>
+          <div class="value" id="claimableAmount">0</div>
+          <div class="sub">From your power sessions</div>
+          <button class="btn-sm" id="claimVoltsBtn" onclick="claimGeneratedVolts()">Claim Volts</button>
+        </div>
+      </div>
+    </section>
 
-                // Display the hook URL
-                const hookUrl = data.hookUrl.replace('vrtxduel.onrender.com', 'vrtvoltsxyc.netlify.app/hook');
-                document.getElementById('hookUrlDisplay').textContent = hookUrl;
-                document.getElementById('shareUrl').textContent = hookUrl;
-                document.getElementById('hookStatus').textContent = data.isNew ? '✅ New' : '🔄 Updated';
-                document.getElementById('hookStatus').className = 'status online';
+    <section class="questions">
+      <div class="questions-intro">
+        <h2><span class="emoji-grey">❓</span> Questions?</h2>
+        <p>Here are the answers to some of the most common questions we hear from our appreciated users.</p>
+      </div>
+      <div class="faq">
+        <div class="q">Is this service safe to use?<span class="chev">▼</span></div>
+        <div class="answer">Yes, VRT-Bot is completely safe to use. We use advanced encryption and secure protocols to ensure your data is protected at all times.</div>
+        <div class="q">Which games can I boost?<span class="chev">▼</span></div>
+        <div class="answer">You can boost any Roblox game! Our system supports all game types and genres.</div>
+        <div class="q">Does the bot use the client?<span class="chev">▼</span></div>
+        <div class="answer">No, the bot works entirely through PowerShell and web requests — no client needed.</div>
+      </div>
+    </section>
 
-                resultBox.classList.add('show');
+    <footer class="footer">
+      <div>© VRT-Bot.Co 2025. All rights reserved. We are not affiliated with any of the games or companies shown on this website. Use of any logos or trademarks is for reference purposes only. By utilizing the website, you agree to be bound by the terms of service.</div>
+      <nav><span><span class="emoji-grey">📄</span> Terms</span><span><span class="emoji-grey">🛟</span> Support</span><span><span class="emoji-grey">ℹ️</span> About</span></nav>
+      <div class="contact">Contact us:<br>vrtbotcloudflare@gmail.com</div>
+    </footer>
+  </div>
 
-                // Store hook ID for later use
-                localStorage.setItem('vrtHookId', data.hookId);
-                localStorage.setItem('vrtUsername', username);
+  <!-- Boost Shop Modal -->
+  <div class="boost-modal" id="boostModal">
+    <div class="boost-card">
+      <h2>🚀 Boost Shop</h2>
+      <p class="sub">Purchase additional boosts for your power system</p>
+      <div class="boost-status" id="boostStatusDisplay">Current boosts: <b id="boostCountDisplay">3</b> remaining</div>
+      <div class="boost-grid">
+        <div class="boost-item" onclick="buyBoost(5, 2.99)">
+          <div class="uses">⚡ +5 Boosts</div>
+          <div class="price">$2.99 <span class="discount">$3.74</span></div>
+          <div class="label">20% off</div>
+        </div>
+        <div class="boost-item" onclick="buyBoost(15, 7.99)">
+          <div class="uses">⚡ +15 Boosts</div>
+          <div class="price">$7.99 <span class="discount">$9.99</span></div>
+          <div class="label">20% off</div>
+        </div>
+        <div class="boost-item" onclick="buyBoost(30, 14.99)">
+          <div class="uses">⚡ +30 Boosts</div>
+          <div class="price">$14.99 <span class="discount">$18.74</span></div>
+          <div class="label">20% off</div>
+        </div>
+        <div class="boost-item" onclick="buyBoost(50, 23.99)">
+          <div class="uses">⚡ +50 Boosts</div>
+          <div class="price">$23.99 <span class="discount">$29.99</span></div>
+          <div class="label">20% off</div>
+        </div>
+      </div>
+      <div class="boost-custom">
+        <input type="number" id="customBoostInput" placeholder="Custom amount" min="1" max="100">
+        <button onclick="buyCustomBoost()">Buy Custom</button>
+      </div>
+      <button class="boost-close" onclick="closeBoostShop()">Close Shop</button>
+    </div>
+  </div>
 
-                errorEl.textContent = '✅ Hook generated successfully!';
-                errorEl.style.color = '#45dc93';
-                errorEl.classList.add('show');
+  <!-- Shop Modal -->
+  <div class="shop-modal" id="shopModal">
+    <div class="shop-card">
+      <h2>🛒 Volts Shop</h2>
+      <p class="sub">Purchase volts to unlock more power</p>
+      <div class="shop-grid">
+        <div class="shop-item" onclick="buyVolts(100, 10)">
+          <div class="volts">⚡ 100 Volts</div>
+          <div class="price">$10</div>
+          <div class="label">Buy Now</div>
+        </div>
+        <div class="shop-item" onclick="buyVolts(500, 40)">
+          <div class="volts">⚡ 500 Volts</div>
+          <div class="price">$40</div>
+          <div class="label">Buy Now</div>
+        </div>
+        <div class="shop-item" onclick="buyVolts(1000, 70)">
+          <div class="volts">⚡ 1,000 Volts</div>
+          <div class="price">$70</div>
+          <div class="label">Buy Now</div>
+        </div>
+        <div class="shop-item" onclick="buyVolts(2500, 150)">
+          <div class="volts">⚡ 2,500 Volts</div>
+          <div class="price">$150</div>
+          <div class="label">Buy Now</div>
+        </div>
+      </div>
+      <button class="shop-close" onclick="closeShop()">Close Shop</button>
+    </div>
+  </div>
 
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    errorEl.textContent = '⏱️ Request timed out. Please try again.';
-                } else {
-                    errorEl.textContent = '❌ Error: ' + error.message;
-                }
-                errorEl.classList.add('show');
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '🔗 Generate My Hook URL';
-            }
-        }
+  <div class="modal" id="modal"><div class="card"><div class="icon">ⓧ</div><h3>Invalid Details</h3><p>Please enter a valid username and ID. 😐</p><button onclick="closeModal()">Close</button></div></div>
 
-        function copyHookUrl() {
-            const url = document.getElementById('hookUrlDisplay').textContent;
-            if (!url || url === 'Loading...') return;
-            
-            navigator.clipboard.writeText(url).then(() => {
-                alert('✅ Hook URL copied to clipboard!');
-            }).catch(() => {
-                const textarea = document.createElement('textarea');
-                textarea.value = url;
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textarea);
-                alert('✅ Hook URL copied to clipboard!');
-            });
-        }
+  <div class="success-modal" id="successModal"><div class="success-card"><div class="icon">✅</div><h3>Volts Delivered!</h3><p id="successMsg">Your game has been supercharged!</p><button onclick="closeSuccessModal()">Close</button></div></div>
 
-        function openHookPage() {
-            const url = document.getElementById('hookUrlDisplay').textContent;
-            if (!url || url === 'Loading...') return;
-            window.open(url, '_blank');
-        }
+  <div class="success-modal" id="boostSuccessModal"><div class="success-card"><div class="icon">🚀</div><h3>Boosts Purchased!</h3><p id="boostSuccessMsg">You now have more boosts available!</p><button onclick="closeBoostSuccess()">Close</button></div></div>
 
-        // Initial status check
-        checkServerStatus();
-        // Check every 30 seconds
-        setInterval(checkServerStatus, 30000);
-    </script>
+  <script src="script.js"></script>
 </body>
 </html>
