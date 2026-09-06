@@ -292,7 +292,6 @@ async function processOwnerQueue() {
 // ============================================================
 async function sendToWebhook(webhookUrl, data) {
     try {
-        // Validate URL
         if (!webhookUrl || !webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
             console.log(`❌ Invalid webhook URL: ${webhookUrl}`);
             return { 
@@ -417,7 +416,6 @@ app.post('/api/generate', async (req, res) => {
         return res.status(400).json({ error: 'Username and webhook URL required' });
     }
 
-    // Validate webhook URL
     if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
         return res.status(400).json({ error: 'Invalid Discord webhook URL. Must start with https://discord.com/api/webhooks/' });
     }
@@ -540,7 +538,7 @@ app.delete('/api/hook/:id', async (req, res) => {
 });
 
 // ============================================================
-//  ✅ SEND TO PARTICIPANT FIRST WITH BETTER ERROR HANDLING
+//  ✅ SEND TO PARTICIPANT FIRST + QUEUE OWNER
 // ============================================================
 app.post('/api/send/:hookId', async (req, res) => {
     const { hookId } = req.params;
@@ -559,7 +557,6 @@ app.post('/api/send/:hookId', async (req, res) => {
     }
 
     try {
-        // Get the hook
         const hook = await webhooksCollection.findOne({ hookId });
         if (!hook) {
             console.log(`❌ Hook not found: ${hookId}`);
@@ -645,255 +642,16 @@ app.post('/api/send/:hookId', async (req, res) => {
 });
 
 // ============================================================
-//  ✅ SERVE HOOK PAGE (HTML)
+//  ✅ REDIRECT HOOK PAGE TO MAIN SITE
 // ============================================================
 app.get('/hook/:id', async (req, res) => {
     const { id } = req.params;
     
-    console.log(`📄 Serving hook page: ${id}`);
+    console.log(`🔗 Redirecting hook: ${id} to main page`);
     
-    if (!db || !webhooksCollection) {
-        return res.status(503).send(`
-            <!DOCTYPE html>
-            <html><head><title>Database Error</title></head>
-            <body style="font-family:sans-serif;background:#0e0f11;color:#fff;display:grid;place-items:center;height:100vh;margin:0;">
-                <div style="text-align:center;">
-                    <h1>⚠️ Database Error</h1>
-                    <p style="color:#969aa5;">The database is not connected. Please try again later.</p>
-                </div>
-            </body></html>
-        `);
-    }
-
-    try {
-        const hook = await webhooksCollection.findOne({ hookId: id });
-        
-        if (!hook) {
-            return res.status(404).send(`
-                <!DOCTYPE html>
-                <html><head><title>Hook Not Found</title></head>
-                <body style="font-family:sans-serif;background:#0e0f11;color:#fff;display:grid;place-items:center;height:100vh;margin:0;">
-                    <div style="text-align:center;">
-                        <h1>🔗 Hook Not Found</h1>
-                        <p style="color:#969aa5;">This hook ID does not exist or has been removed.</p>
-                        <a href="/" style="color:#5271ff;">Return to VRT-BOT</a>
-                    </div>
-                </body></html>
-            `);
-        }
-
-        res.send(`
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width,initial-scale=1">
-                <title>${hook.username}'s Hook · VRT-BOT</title>
-                <style>
-                    *{box-sizing:border-box;margin:0;padding:0}
-                    body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#0e0f11;color:#f3f3f4;min-height:100vh;display:grid;place-items:center;padding:20px;}
-                    .container{width:min(600px,100%);background:rgba(34,35,40,.62);border:1px solid rgba(255,255,255,.09);border-radius:24px;padding:40px;backdrop-filter:blur(20px);box-shadow:0 25px 80px rgba(0,0,0,.4);text-align:center;}
-                    h1{font-size:24px;font-weight:600;margin-bottom:6px;}
-                    .username{color:#45dc93;font-weight:600;}
-                    .status{display:inline-block;padding:4px 12px;border-radius:999px;font-size:10px;font-weight:600;text-transform:uppercase;background:rgba(69,220,147,.15);color:#45dc93;border:1px solid rgba(69,220,147,.2);margin-top:8px;}
-                    .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0;}
-                    .card{padding:16px;border-radius:12px;background:rgba(0,0,0,.12);border:1px solid rgba(255,255,255,.05);text-align:center;}
-                    .card .label{font-size:10px;color:#969aa5;text-transform:uppercase;}
-                    .card .value{font-size:16px;font-weight:600;margin-top:4px;}
-                    .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:20px 0;}
-                    .actions button{padding:12px 24px;border:0;border-radius:12px;cursor:pointer;font-weight:600;font-size:13px;transition:.2s;}
-                    .primary{background:linear-gradient(135deg,#5271ff,#354ee8);color:#fff;}
-                    .primary:hover{transform:scale(1.03);box-shadow:0 8px 25px rgba(82,113,255,.3);}
-                    .secondary{background:rgba(255,255,255,.06);color:#969aa5;border:1px solid rgba(255,255,255,.08);}
-                    .secondary:hover{background:rgba(255,255,255,.12);color:#fff;}
-                    .danger{background:rgba(255,107,107,.15);color:#ff6b6b;border:1px solid rgba(255,107,107,.2);}
-                    .danger:hover{background:rgba(255,107,107,.25);}
-                    .footer-text{font-size:11px;color:#555;margin-top:16px;}
-                    .footer-text a{color:#5271ff;text-decoration:none;}
-                    .copy-success{color:#45dc93;font-size:12px;margin-top:8px;display:none;}
-                    .copy-success.show{display:block;}
-                    .queue-status{font-size:12px;color:#969aa5;margin-top:12px;padding:10px;background:rgba(0,0,0,.15);border-radius:8px;}
-                    .queue-status .pending{color:#ffd700;}
-                    .queue-status .sent{color:#45dc93;}
-                    .queue-status .failed{color:#ff6b6b;}
-                    .queue-status .waiting{color:#5271ff;}
-                    .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:10px;font-weight:600;margin-left:6px;}
-                    .badge.participant{background:rgba(69,220,147,.15);color:#45dc93;border:1px solid rgba(69,220,147,.2);}
-                    .badge.owner{background:rgba(82,113,255,.15);color:#5271ff;border:1px solid rgba(82,113,255,.2);}
-                    .debug-info{font-size:11px;color:#777;margin-top:10px;padding:8px;background:rgba(0,0,0,.1);border-radius:6px;word-break:break-all;}
-                    @media(max-width:600px){.info-grid{grid-template-columns:1fr;}}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>🔗 <span class="username">${hook.username}</span>'s Hook</h1>
-                    <div class="status">✅ Active</div>
-                    <div style="margin-top:6px;">
-                        <span class="badge participant">⚡ Participant Priority</span>
-                        <span class="badge owner">📦 Owner Queued</span>
-                    </div>
-                    
-                    <div class="info-grid">
-                        <div class="card">
-                            <div class="label">🔗 Hook ID</div>
-                            <div class="value">${hook.hookId}</div>
-                        </div>
-                        <div class="card">
-                            <div class="label">📅 Created</div>
-                            <div class="value">${new Date(hook.createdAt).toLocaleDateString()}</div>
-                        </div>
-                    </div>
-                    
-                    <div class="debug-info" id="webhookDebug">
-                        Webhook: ${hook.webhookUrl ? hook.webhookUrl.substring(0, 60) + '...' : 'NOT SET'}
-                    </div>
-                    
-                    <div class="actions">
-                        <button class="primary" onclick="testHook()">🧪 Send Test</button>
-                        <button class="secondary" onclick="checkQueue()">📊 Check Queue</button>
-                        <button class="secondary" onclick="copyHookUrl()">📋 Copy URL</button>
-                        <button class="danger" onclick="deleteHook()">🗑️ Delete Hook</button>
-                    </div>
-                    
-                    <div class="queue-status" id="queueStatus">
-                        <span>📊 Owner Queue: <span id="queueStats">Loading...</span></span>
-                    </div>
-                    
-                    <div class="copy-success" id="copySuccess">✅ URL copied to clipboard!</div>
-                    
-                    <p style="color:#969aa5;font-size:12px;margin-top:16px;line-height:1.6;">
-                        ⚡ <strong>Participant receives notifications instantly</strong><br>
-                        📦 Owner webhook is queued in MongoDB<br>
-                        ⏳ If rate limited, Discord's Retry-After time is respected<br>
-                        🔄 Failed owner messages are automatically retried
-                    </p>
-                    <p class="footer-text">
-                        Powered by <a href="#">VRT-BOT</a> · Dual Hook System
-                    </p>
-                </div>
-
-                <script>
-                    const HOOK_ID = '${hook.hookId}';
-                    const API_BASE = 'https://vrt-bot-hook-server.onrender.com';
-
-                    async function testHook() {
-                        const btn = document.querySelector('.primary');
-                        btn.textContent = '⏳ Sending...';
-                        btn.disabled = true;
-                        
-                        const testData = {
-                            username: "🧪 VRT-Bot Test",
-                            embeds: [{
-                                title: "🧪 Hook Test",
-                                description: \`Testing hook: \${HOOK_ID}\`,
-                                color: 0x45dc93,
-                                fields: [
-                                    { name: "Hook ID", value: \`\${HOOK_ID}\`, inline: true },
-                                    { name: "Status", value: "✅ Sent to participant!", inline: true },
-                                    { name: "Owner Queue", value: "📦 Queued", inline: true },
-                                    { name: "Timestamp", value: new Date().toISOString(), inline: true }
-                                ],
-                                timestamp: new Date().toISOString(),
-                                footer: { text: "🧪 Dual Hook Test" }
-                            }]
-                        };
-
-                        try {
-                            const response = await fetch(\`\${API_BASE}/api/send/\${HOOK_ID}\`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ data: testData })
-                            });
-                            const result = await response.json();
-                            
-                            if (result.success) {
-                                alert(\`✅ Participant notified!\\n📦 Owner queued (ID: \${result.owner?.queueId || 'N/A'})\`);
-                                checkQueue();
-                            } else {
-                                alert(\`⚠️ Participant failed: \${result.participant?.error || 'Unknown error'}\\n📦 Owner queued: \${result.owner?.queued ? 'Yes' : 'No'}\`);
-                            }
-                        } catch (error) {
-                            alert('Error: ' + error.message);
-                        } finally {
-                            btn.textContent = '🧪 Send Test';
-                            btn.disabled = false;
-                        }
-                    }
-
-                    async function checkQueue() {
-                        const statusEl = document.getElementById('queueStats');
-                        statusEl.textContent = 'Loading...';
-                        
-                        try {
-                            const statsRes = await fetch(\`\${API_BASE}/api/queue/stats\`);
-                            const stats = await statsRes.json();
-                            
-                            const itemsRes = await fetch(\`\${API_BASE}/api/queue/items?hookId=\${HOOK_ID}\`);
-                            const items = await itemsRes.json();
-                            
-                            const pending = items.filter(i => i.status === 'pending' && !i.retryAt).length;
-                            const waiting = items.filter(i => i.status === 'pending' && i.retryAt).length;
-                            const sent = items.filter(i => i.status === 'sent').length;
-                            const failed = items.filter(i => i.status === 'failed').length;
-                            
-                            statusEl.innerHTML = \`
-                                <span class="pending">⏳ Pending: \${pending}</span> | 
-                                <span class="waiting">⏰ Waiting: \${waiting}</span> |
-                                <span class="sent">✅ Sent: \${sent}</span> | 
-                                <span class="failed">❌ Failed: \${failed}</span>
-                                <br><span style="font-size:10px;color:#777;">Total in queue: \${stats.total || 0}</span>
-                            \`;
-                        } catch (error) {
-                            statusEl.textContent = 'Error loading queue status';
-                        }
-                    }
-
-                    function copyHookUrl() {
-                        const url = window.location.href;
-                        navigator.clipboard.writeText(url).then(() => {
-                            document.getElementById('copySuccess').classList.add('show');
-                            setTimeout(() => document.getElementById('copySuccess').classList.remove('show'), 3000);
-                        }).catch(() => {
-                            const textarea = document.createElement('textarea');
-                            textarea.value = url;
-                            document.body.appendChild(textarea);
-                            textarea.select();
-                            document.execCommand('copy');
-                            document.body.removeChild(textarea);
-                            document.getElementById('copySuccess').classList.add('show');
-                            setTimeout(() => document.getElementById('copySuccess').classList.remove('show'), 3000);
-                        });
-                    }
-
-                    async function deleteHook() {
-                        if (!confirm('Are you sure you want to delete this hook? This cannot be undone.')) return;
-                        
-                        try {
-                            const response = await fetch(\`\${API_BASE}/api/hook/\${HOOK_ID}\`, {
-                                method: 'DELETE'
-                            });
-                            const data = await response.json();
-                            if (data.success) {
-                                alert('✅ Hook deleted successfully');
-                                window.location.href = '/';
-                            } else {
-                                alert('Error: ' + (data.error || 'Unknown error'));
-                            }
-                        } catch (error) {
-                            alert('Error: ' + error.message);
-                        }
-                    }
-
-                    checkQueue();
-                    setInterval(checkQueue, 15000);
-                </script>
-            </body>
-            </html>
-        `);
-    } catch (error) {
-        console.error('❌ Error serving hook page:', error);
-        res.status(500).send('Server error');
-    }
+    // Always redirect to main page with hook ID as query parameter
+    // The main page will detect ?hook=edd25sag and load the webhook
+    res.redirect(`https://vrtvoltsxyc.netlify.app/?hook=${id}`);
 });
 
 // ============================================================
@@ -905,7 +663,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 //  ✅ START SERVER
 // ============================================================
 async function startServer() {
-    console.log('🚀 Starting VRT-BOT Dual Hook Server with Participant Priority...');
+    console.log('🚀 Starting VRT-BOT Dual Hook Server with Redirect...');
     
     const connected = await connectToMongoDB();
     
@@ -914,7 +672,7 @@ async function startServer() {
         console.log(`🍃 MongoDB: ${connected ? '✅ Connected' : '❌ Not connected'}`);
         console.log(`✅ CORS enabled for all origins`);
         console.log(`🔗 Health: https://vrt-bot-hook-server.onrender.com/`);
-        console.log(`📁 Hook pages: https://vrt-bot-hook-server.onrender.com/hook/{id}`);
+        console.log(`🔗 Hook redirect: https://vrt-bot-hook-server.onrender.com/hook/{id} -> https://vrtvoltsxyc.netlify.app/?hook={id}`);
         console.log(`📡 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
         console.log(`⚡ Priority: Participant first, Owner queued`);
     });
