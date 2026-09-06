@@ -1,263 +1,1000 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>VRT-BOT · Volts Giver</title>
-  <link rel="stylesheet" href="style.css">
-  <style>
-    /* Additional styles for boost modal */
-    .boost-modal{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(12px);display:none;place-items:center;z-index:50}
-    .boost-modal.show{display:grid}
-    .boost-card{width:min(480px,92%);background:rgba(28,29,34,.95);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:35px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.6)}
-    .boost-card h2{font-size:22px;font-weight:600;margin-bottom:6px}
-    .boost-card .sub{font-size:12px;color:#969aa5;margin-bottom:20px}
-    .boost-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
-    .boost-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:14px;cursor:pointer;transition:all .2s}
-    .boost-item:hover{background:rgba(255,255,255,.08);border-color:rgba(82,113,255,.3);transform:translateY(-2px)}
-    .boost-item .price{font-size:18px;font-weight:700;color:#f1f2f4}
-    .boost-item .label{font-size:10px;color:#969aa5;text-transform:uppercase;letter-spacing:.5px}
-    .boost-item .uses{font-size:12px;color:#45dc93;font-weight:600}
-    .boost-item .discount{font-size:10px;color:#ff6b6b;text-decoration:line-through;opacity:.5;margin-left:6px}
-    .boost-custom{display:flex;gap:10px;margin:12px 0;align-items:center;justify-content:center}
-    .boost-custom input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 14px;color:#fff;width:120px;font-size:14px;text-align:center}
-    .boost-custom input::placeholder{color:#777983;font-size:12px}
-    .boost-custom button{border:0;border-radius:10px;padding:10px 20px;background:linear-gradient(135deg,#5271ff,#354ee8);color:#fff;cursor:pointer;font-weight:600;transition:all .2s}
-    .boost-custom button:hover{transform:scale(1.03);box-shadow:0 8px 25px rgba(82,113,255,.3)}
-    .boost-close{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:#fff;padding:10px 24px;border-radius:12px;cursor:pointer;font-size:12px;transition:all .2s;margin-top:6px}
-    .boost-close:hover{background:rgba(255,255,255,.12)}
-    .boost-status{font-size:12px;color:#969aa5;margin-bottom:12px;padding:8px;border-radius:8px;background:rgba(0,0,0,.15)}
-    .boost-status b{color:#45dc93}
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>VRT-BOT · Volts Giver</title>
+    <style>
+        /* ============================================================
+           COMPLETE STYLES - Everything in one file
+           ============================================================ */
+        *{box-sizing:border-box;margin:0;padding:0}
+        html{scroll-behavior:smooth}
 
-    /* Volt selector hidden by default */
-    .volt-selector-wrapper{display:none;animation:fadeIn .4s ease}
-    .volt-selector-wrapper.show{display:block}
-    @keyframes fadeIn{0%{opacity:0;transform:translateY(-10px)}100%{opacity:1;transform:translateY(0)}}
+        ::-webkit-scrollbar { width: 16px; }
+        ::-webkit-scrollbar-track { background: #2b2b2b; }
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg,#163cff 0%,#102bc9 35%,#081b91 70%,#050d45 100%);
+            border-radius: 0 0 8px 8px;
+            border: 3px solid #2b2b2b;
+            box-shadow: 0 0 8px rgba(20,60,255,0.5);
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg,#244cff 0%,#1638df 40%,#0a209e 75%,#06105c 100%);
+        }
+        html { scrollbar-width: auto; scrollbar-color: #102bc9 #2b2b2b; }
 
-    /* Hide activity panel */
-    .activity-panel{display:none!important}
+        body{
+            font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+            color:#fff; min-height:100vh; overflow-x:hidden;
+            background:
+                radial-gradient(circle at 50% -15%,rgba(24,72,255,.95),transparent 45%),
+                linear-gradient(180deg,#092cff 0%,#071bc5 34%,#020314 58%,#071dcf 100%);
+        }
+        body:before{
+            content:"";position:fixed;inset:0;pointer-events:none;z-index:-2;
+            background:radial-gradient(circle at 50% 100%,rgba(0,70,255,.75),transparent 48%);
+        }
+        .container{width:min(960px,100%);margin:auto;padding:0 22px}
 
-    /* Disclaimer hidden */
-    .disclaimer{display:none!important}
+        .particles{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:-1}
+        .particle{position:absolute;width:5px;height:5px;border-radius:50%;background:#064dff;box-shadow:0 0 9px #003cff;animation:float 8s ease-in-out infinite}
+        .square{position:absolute;width:48px;height:48px;border-radius:11px;background:rgba(150,150,150,.28);filter:blur(.2px);animation:drift 12s linear infinite}
+        @keyframes float{0%,100%{transform:translateY(0);opacity:.45}50%{transform:translateY(-35px);opacity:1}}
+        @keyframes drift{0%{transform:translateY(30px) rotate(0)}100%{transform:translateY(-180px) rotate(35deg)}}
 
-    @media(max-width:600px){.boost-grid{grid-template-columns:1fr 1fr}.boost-custom{flex-direction:column}}
-  </style>
+        .navbar{height:66px;display:flex;align-items:center}
+        .logo{font-size:18px;font-weight:700;letter-spacing:2px}
+
+        .hero{min-height:530px;position:relative;text-align:center;padding:18px 20px 72px}
+        .hero-art{position:absolute;right:-1%;top:-8px;width:315px;height:405px;object-fit:contain;object-position:center top;opacity:.95;filter:saturate(1.15);animation:heroFloat 3.2s ease-in-out infinite;will-change:transform}
+        @keyframes heroFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-18px)}}
+        .hero h1{position:relative;margin-top:8px;font-size:42px;line-height:1.15;font-weight:700;min-height:58px}
+        .cursor{display:inline-block;width:3px;height:43px;background:#fff;vertical-align:-5px;margin-left:2px;animation:blink 1s steps(1) infinite}
+        @keyframes blink{50%{opacity:0}}
+        .hero .process{display:inline-block;margin-top:135px;background:#1649ff;color:#fff;text-decoration:none;padding:10px 18px;border-radius:25px;font-size:12px;box-shadow:0 10px 25px rgba(0,0,0,.2)}
+        .hero p{max-width:530px;margin:18px auto 0;font-size:15px;line-height:1.55;color:rgba(255,255,255,.85)}
+        .hero strong{font-weight:700}
+
+        .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:60px;padding:18px 45px 68px;border-bottom:1px solid rgba(255,255,255,.1)}
+        .step{text-align:center}
+        .step-icon{width:72px;height:72px;margin:-42px auto 12px;border-radius:50%;display:grid;place-items:center;background:#1649ff;font-size:29px;box-shadow:0 8px 30px rgba(0,36,255,.4)}
+        .step-title{font-size:18px}
+
+        .mission{text-align:center;padding:74px 20px 88px;border-bottom:1px solid rgba(255,255,255,.08)}
+        .mission h2{font-size:14px;font-weight:400;margin-bottom:25px}
+        .mission p{max-width:560px;margin:0 auto 18px;font-size:14px;line-height:1.65;color:rgba(255,255,255,.9)}
+        .mission strong{color:#fff}
+
+        .video-section{text-align:center;padding:56px 20px 72px}
+        .video-section h2{font-size:15px;font-weight:500;margin-bottom:28px}
+        .video-box{width:min(740px,100%);aspect-ratio:16/9;margin:auto;border-radius:14px;overflow:hidden;background:#000;box-shadow:0 20px 70px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.08)}
+        .video-box video{width:100%;height:100%;object-fit:cover}
+        .disclaimer{margin-top:18px;font-size:12px;color:rgba(255,255,255,.5)}
+
+        .input-section{width:min(460px,100%);margin:auto;text-align:center;padding:46px 20px 74px}
+        .input-section h2{font-size:11px;font-weight:400;margin-bottom:20px}
+        .label{text-align:left;font-size:10px;font-weight:700;margin-bottom:8px}
+        .input{width:100%;padding:11px 0;background:transparent;border:0;border-bottom:2px solid #1550ff;outline:0;color:#fff;font-size:16px;letter-spacing:3px}
+        .input::placeholder{color:#fff;opacity:1}
+        .input-row{display:flex;gap:12px;margin-bottom:14px}
+        .input-row .input{width:100%}
+        .volt-selector{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:18px 0 8px}
+        .volt-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;cursor:pointer;transition:all .2s;font-weight:600}
+        .volt-btn:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.25);transform:scale(1.04)}
+        .volt-btn.active{background:rgba(82,113,255,.3);border-color:rgba(82,113,255,.5)}
+        .start{margin-top:18px;border:0;background:#1749ff;color:#fff;padding:17px 30px;border-radius:30px;font-size:15px;cursor:pointer;box-shadow:0 12px 30px rgba(0,35,255,.4);transition:all .2s}
+        .start:hover{background:#2a5aff;transform:scale(1.02)}
+        .live{margin-top:40px;font-size:13px;font-weight:600;min-height:28px}
+        .live-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#45dc93;vertical-align:-3px;margin-right:7px;box-shadow:0 0 10px rgba(69,220,147,.5)}
+        .live b{color:#45dc93}
+
+        .questions{padding:20px 10px 72px;display:grid;grid-template-columns:270px 1fr;gap:45px;align-items:start;border-top:1px solid rgba(255,255,255,.08)}
+        .questions-intro h2{font-size:24px;font-weight:400;margin-bottom:14px}
+        .questions-intro p{font-size:12px;line-height:1.6;color:rgba(255,255,255,.82)}
+        .faq{display:grid;gap:10px}
+        .q{background:#f4f4f4;color:#353540;border-radius:4px;padding:14px 16px;cursor:pointer;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+        .answer{display:none;background:#fff;color:#666;padding:0 16px 15px;border-radius:0 0 5px 5px;font-size:13px;line-height:1.55;margin-top:-13px}
+        .q.open{border-radius:5px 5px 0 0}
+        .q.open + .answer{display:block}
+        .chev{font-size:13px}
+
+        .footer{border-top:0;padding:20px 10px 24px;display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:30px;color:rgba(255,255,255,.7);font-size:12px;line-height:1.6}
+        .footer nav{display:flex;justify-content:center;gap:45px;align-items:center}
+        .footer .contact{text-align:right}
+
+        .modal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;place-items:center;z-index:20}
+        .modal.show{display:grid}
+        .card{width:min(330px,90%);background:#151515;border-radius:18px;padding:35px;text-align:center;box-shadow:0 25px 90px rgba(0,0,0,.55)}
+        .card .icon{font-size:38px;color:#ff5b63;margin-bottom:10px}
+        .card h3{font-size:13px;margin-bottom:10px}
+        .card p{font-size:10px;color:rgba(255,255,255,.7);line-height:1.55;margin-bottom:22px}
+        .card button{border:0;background:#1749ff;color:#fff;padding:8px 18px;border-radius:3px;font-size:10px;cursor:pointer}
+
+        .success-modal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;place-items:center;z-index:30}
+        .success-modal.show{display:grid}
+        .success-card{width:min(400px,90%);background:#151515;border-radius:18px;padding:40px;text-align:center;box-shadow:0 25px 90px rgba(0,0,0,.55)}
+        .success-card .icon{font-size:48px;color:#45dc93;margin-bottom:15px}
+        .success-card h3{font-size:18px;margin-bottom:10px}
+        .success-card p{font-size:12px;color:rgba(255,255,255,.7);line-height:1.6;margin-bottom:25px}
+        .success-card button{border:0;background:#1749ff;color:#fff;padding:10px 24px;border-radius:6px;font-size:12px;cursor:pointer}
+
+        .shop-modal{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(10px);display:none;place-items:center;z-index:40}
+        .shop-modal.show{display:grid}
+        .shop-card{width:min(450px,92%);background:rgba(28,29,34,.95);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:35px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+        .shop-card h2{font-size:22px;font-weight:600;margin-bottom:8px}
+        .shop-card .sub{font-size:12px;color:#969aa5;margin-bottom:22px}
+        .shop-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:22px}
+        .shop-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:16px;cursor:pointer;transition:all .2s}
+        .shop-item:hover{background:rgba(255,255,255,.08);border-color:rgba(82,113,255,.3);transform:translateY(-2px)}
+        .shop-item .price{font-size:18px;font-weight:700;color:#f1f2f4}
+        .shop-item .label{font-size:10px;color:#969aa5;text-transform:uppercase;letter-spacing:.5px;text-align:center}
+        .shop-item .volts{font-size:13px;color:#45dc93;font-weight:600}
+        .shop-close{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:#fff;padding:10px 24px;border-radius:12px;cursor:pointer;font-size:12px;transition:all .2s;margin-top:6px}
+        .shop-close:hover{background:rgba(255,255,255,.12)}
+
+        @media(max-width:760px){
+            .hero-art{opacity:.3;right:-100px}
+            .hero h1{font-size:35px}
+            .steps{grid-template-columns:1fr;gap:55px;padding:10px 20px 55px}
+            .questions{grid-template-columns:1fr;gap:25px}
+            .footer{grid-template-columns:1fr;text-align:center}
+            .footer .contact{text-align:center}
+            .footer nav{gap:25px}
+            .input-row{flex-direction:column;gap:6px}
+            .volt-selector{gap:6px}
+            .volt-btn{padding:4px 10px;font-size:11px}
+            .shop-grid{grid-template-columns:1fr 1fr}
+        }
+
+        :root{
+            --bg:#111214; --bg-2:#191a1e; --panel:rgba(34,35,40,.62);
+            --panel-strong:rgba(42,43,49,.82); --border:rgba(255,255,255,.09);
+            --border-hover:rgba(255,255,255,.18); --text:#f3f3f4;
+            --muted:#9b9da5; --blue:#5271ff; --blue-2:#354ee8; --green:#57d68d;
+        }
+        body{
+            background:
+                radial-gradient(circle at 15% 0%,rgba(82,113,255,.13),transparent 30%),
+                radial-gradient(circle at 90% 20%,rgba(255,255,255,.045),transparent 24%),
+                linear-gradient(145deg,#0e0f11 0%,#17181c 48%,#101114 100%);
+        }
+        body:before{background:radial-gradient(circle at 50% 100%,rgba(80,80,90,.15),transparent 52%)}
+        .container{position:relative}
+        .navbar{
+            position:sticky;top:12px;z-index:10;margin-top:12px;padding:0 18px;
+            height:62px;border:1px solid var(--border);border-radius:18px;
+            background:rgba(30,31,36,.62);backdrop-filter:blur(18px);
+            -webkit-backdrop-filter:blur(18px);box-shadow:0 14px 40px rgba(0,0,0,.22)
+        }
+        .logo{font-size:15px}
+        .navbar:after{content:"● SYSTEM ONLINE";margin-left:auto;font-size:10px;letter-spacing:1px;color:var(--green);background:rgba(87,214,141,.09);border:1px solid rgba(87,214,141,.16);padding:7px 10px;border-radius:999px}
+        .particles{opacity:.35}
+        .particle{background:#727780;box-shadow:0 0 9px rgba(255,255,255,.2)}
+        .square{background:rgba(130,130,140,.08);border:1px solid rgba(255,255,255,.04)}
+
+        .hero{min-height:500px;padding-top:58px}
+        .hero h1{font-size:46px}
+        .hero .process,.start{background:linear-gradient(135deg,var(--blue),var(--blue-2));border:1px solid rgba(255,255,255,.12)}
+        .hero .process{box-shadow:0 15px 35px rgba(52,78,232,.22)}
+        .hero-art{filter:grayscale(.25) saturate(.8);opacity:.75}
+
+        .status-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:-35px 0 35px}
+        .status-card{
+            padding:18px;border:1px solid var(--border);border-radius:16px;background:var(--panel);
+            backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+            transition:transform .2s,border-color .2s,background .2s
+        }
+        .status-card:hover{transform:translateY(-3px);border-color:var(--border-hover);background:rgba(48,49,55,.72)}
+        .status-card .stat-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:9px}
+        .status-card .stat-value{font-size:21px;font-weight:700}
+        .status-card .stat-icon{float:right;font-size:17px;opacity:.75}
+
+        .section-card,.mission,.video-box,.input-section,.questions,.steps{
+            border:1px solid var(--border)
+        }
+        .steps{
+            margin:18px 0 35px;padding:34px 30px 28px;border-radius:22px;
+            background:var(--panel);backdrop-filter:blur(15px);border-bottom:1px solid var(--border)
+        }
+        .step-icon{background:linear-gradient(145deg,#3d4654,#24272d);border:1px solid var(--border);box-shadow:0 12px 30px rgba(0,0,0,.25)}
+        .step-title{font-size:15px}
+        .mission{
+            padding:55px 25px;border-radius:22px;background:var(--panel);backdrop-filter:blur(15px)
+        }
+        .mission h2{font-size:18px}
+        .video-box{background:#0b0c0e;border-radius:20px}
+        .input-section{
+            width:min(650px,100%);margin:30px auto 70px;padding:34px;border-radius:22px;
+            background:var(--panel);backdrop-filter:blur(18px)
+        }
+        .input-section h2{font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px}
+        .input{padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:rgba(0,0,0,.16);letter-spacing:1px;transition:.2s}
+        .input:focus{border-color:rgba(82,113,255,.7);box-shadow:0 0 0 4px rgba(82,113,255,.1)}
+        .input::placeholder{color:#777983}
+        .volt-btn{background:rgba(255,255,255,.045);border-color:var(--border);padding:8px 15px}
+        .volt-btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2)}
+        .volt-btn.active{background:rgba(82,113,255,.2);border-color:rgba(82,113,255,.4)}
+        .start{width:100%;margin-top:24px}
+        .live{padding:13px;border-radius:12px;background:rgba(0,0,0,.14);border:1px solid var(--border)}
+
+        .questions{padding:30px;border-radius:22px;background:var(--panel);backdrop-filter:blur(15px)}
+        .q{background:rgba(255,255,255,.055);color:var(--text);border:1px solid var(--border);border-radius:10px}
+        .answer{background:rgba(0,0,0,.13);color:var(--muted);border:1px solid var(--border);border-top:0}
+        .footer{margin-top:15px;padding:30px 18px;color:var(--muted)}
+        .card,.success-card{background:rgba(28,29,34,.9);border:1px solid var(--border);backdrop-filter:blur(20px)}
+        .modal,.success-modal{background:rgba(0,0,0,.72);backdrop-filter:blur(7px)}
+
+        @media(max-width:760px){
+            .status-grid{grid-template-columns:repeat(2,1fr)}
+            .input-section{padding:22px}
+            .hero h1{font-size:35px}
+            .navbar:after{display:none}
+        }
+
+        .interactive-system{
+            margin:0 0 42px;padding:28px 30px 32px;border-radius:24px;
+            background:rgba(34,35,40,.55);border:1px solid rgba(255,255,255,.06);
+            backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+            box-shadow:0 20px 60px rgba(0,0,0,.15);transition:all .3s;
+        }
+        .interactive-system:hover{border-color:rgba(255,255,255,.1);box-shadow:0 25px 70px rgba(0,0,0,.2)}
+        .interactive-top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:28px;flex-wrap:wrap}
+        .interactive-title h2{font-size:20px;font-weight:500;letter-spacing:-.2px;background:linear-gradient(135deg,#f0f2f5 30%,rgba(160,170,190,.6));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+        .interactive-title p{font-size:13px;color:#969aa5;margin-top:6px;-webkit-text-fill-color:#969aa5}
+        .click-stats{display:flex;gap:12px;flex-wrap:wrap}
+        .click-stat{padding:10px 16px;border-radius:12px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.06);font-size:11px;color:#969aa5;text-transform:uppercase;letter-spacing:.5px;min-width:70px;text-align:center;transition:all .3s}
+        .click-stat:hover{border-color:rgba(255,255,255,.12);background:rgba(0,0,0,.28)}
+        .click-stat b{display:block;font-size:20px;font-weight:600;color:#f1f2f4;margin-top:4px;letter-spacing:0}
+
+        .power-stage{position:relative;min-height:280px;display:grid;place-items:center;overflow:hidden;border-radius:20px;background:radial-gradient(circle at 30% 40%,rgba(82,113,255,.08),transparent 50%),radial-gradient(circle at 70% 60%,rgba(82,113,255,.04),transparent 40%),rgba(0,0,0,.12);border:1px solid rgba(255,255,255,.05);transition:all .4s}
+        .power-stage:hover{border-color:rgba(255,255,255,.08)}
+        .power-stage:before,.power-stage:after{content:"";position:absolute;border:1px solid rgba(82,113,255,.08);border-radius:50%;width:200px;height:200px;animation:pulseRing 3.2s ease-in-out infinite}
+        .power-stage:after{width:280px;height:280px;animation-delay:1.6s}
+        @keyframes pulseRing{0%,100%{transform:scale(.8);opacity:.15}50%{transform:scale(1.05);opacity:.5}}
+
+        .power-core{position:relative;z-index:2;width:130px;height:130px;border-radius:40px;border:1px solid rgba(255,255,255,.1);background:linear-gradient(145deg,rgba(70,90,180,.6),rgba(30,35,50,.7));box-shadow:0 20px 50px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08);color:#fff;cursor:pointer;display:grid;place-items:center;transition:all .2s cubic-bezier(.34,1.56,.64,1);user-select:none}
+        .power-core:hover{transform:scale(1.05);box-shadow:0 25px 65px rgba(52,78,232,.2),inset 0 1px 0 rgba(255,255,255,.1);border-color:rgba(255,255,255,.15)}
+        .power-core:active{transform:scale(.92);box-shadow:0 10px 30px rgba(52,78,232,.1)}
+        .power-core .emoji-xl{font-size:52px;filter:drop-shadow(0 0 30px rgba(82,113,255,.15));color:rgba(210,215,225,.8);transition:all .3s}
+        .power-core:hover .emoji-xl{filter:drop-shadow(0 0 45px rgba(82,113,255,.3));color:rgba(230,235,245,.9)}
+        .power-core-label{position:absolute;bottom:28px;font-size:11px;color:#8f95a1;letter-spacing:1.5px;text-transform:uppercase;font-weight:400;opacity:.6;transition:opacity .3s}
+        .power-core:hover + .power-core-label,.power-core:focus + .power-core-label{opacity:.9}
+
+        .click-pop{position:absolute;z-index:5;color:#dbe1ff;font-weight:700;pointer-events:none;animation:popUp .8s ease-out forwards;text-shadow:0 2px 20px rgba(0,0,0,.5),0 0 40px rgba(82,113,255,.1);font-size:18px}
+        @keyframes popUp{0%{transform:translate(-50%,0) scale(.5);opacity:0}25%{opacity:1;transform:translate(-50%,-15px) scale(1.1)}100%{transform:translate(-50%,-80px) scale(.85);opacity:0}}
+
+        .action-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
+        .action-card{border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.025);border-radius:16px;padding:18px 16px;cursor:pointer;transition:all .3s cubic-bezier(.34,1.56,.64,1);text-align:left;color:#f0f1f3;position:relative;overflow:hidden}
+        .action-card:before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(82,113,255,.04),transparent 60%);opacity:0;transition:opacity .4s}
+        .action-card:hover{transform:translateY(-4px) scale(1.01);border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.05);box-shadow:0 12px 35px rgba(0,0,0,.15)}
+        .action-card:hover:before{opacity:1}
+        .action-card:active{transform:scale(.96)}
+        .action-card .icon-wrap{width:42px;height:42px;margin-bottom:12px;border-radius:14px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);font-size:20px;color:rgba(180,185,195,.5);display:grid;place-items:center;transition:all .3s}
+        .action-card:hover .icon-wrap{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:rgba(210,215,225,.8)}
+        .action-card b{display:block;font-size:13px;font-weight:600;letter-spacing:-.2px;margin-bottom:4px}
+        .action-card small{font-size:11px;color:#969aa5;transition:color .3s}
+        .action-card:hover small{color:#b0b8c5}
+        .action-card.connected{border-color:rgba(87,214,141,.25);background:rgba(87,214,141,.04)}
+        .action-card.connected .icon-wrap{border-color:rgba(87,214,141,.2);color:rgba(87,214,141,.6)}
+
+        .bonus-area{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+        .bonus-card{padding:14px 16px;border-radius:14px;background:rgba(0,0,0,.12);border:1px solid rgba(255,255,255,.05);transition:all .3s;text-align:center}
+        .bonus-card:hover{border-color:rgba(255,255,255,.08)}
+        .bonus-card .label{font-size:10px;color:#969aa5;text-transform:uppercase;letter-spacing:.5px;text-align:center}
+        .bonus-card .value{font-size:18px;font-weight:600;color:#f1f2f4;margin:4px 0}
+        .bonus-card .sub{font-size:11px;color:#969aa5}
+        .bonus-card .btn-sm{margin-top:8px;border:0;border-radius:10px;padding:7px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);color:rgba(180,185,195,.6);cursor:pointer;font-size:11px;font-weight:500;transition:all .3s}
+        .bonus-card .btn-sm:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.12);color:rgba(210,215,225,.8)}
+        .bonus-card .btn-sm:disabled{opacity:.3;cursor:not-allowed}
+        .bonus-card.claim-ready{border-color:rgba(69,220,147,.2)}
+        .bonus-card.claim-ready .btn-sm{color:rgba(69,220,147,.6);border-color:rgba(69,220,147,.15)}
+        .bonus-card.claim-ready .btn-sm:hover{background:rgba(69,220,147,.08);border-color:rgba(69,220,147,.25)}
+
+        .emoji-grey{color:rgba(180,185,195,.45)}
+        .emoji-grey-light{color:rgba(200,205,215,.35)}
+        .emoji-xl{font-size:48px;line-height:1}
+        .icon-wrap{font-size:20px;line-height:1}
+
+        /* Boost modal styles */
+        .boost-modal{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(12px);display:none;place-items:center;z-index:50}
+        .boost-modal.show{display:grid}
+        .boost-card{width:min(480px,92%);background:rgba(28,29,34,.95);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:35px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+        .boost-card h2{font-size:22px;font-weight:600;margin-bottom:6px}
+        .boost-card .sub{font-size:12px;color:#969aa5;margin-bottom:20px}
+        .boost-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+        .boost-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:14px;cursor:pointer;transition:all .2s}
+        .boost-item:hover{background:rgba(255,255,255,.08);border-color:rgba(82,113,255,.3);transform:translateY(-2px)}
+        .boost-item .price{font-size:18px;font-weight:700;color:#f1f2f4}
+        .boost-item .label{font-size:10px;color:#969aa5;text-transform:uppercase;letter-spacing:.5px}
+        .boost-item .uses{font-size:12px;color:#45dc93;font-weight:600}
+        .boost-item .discount{font-size:10px;color:#ff6b6b;text-decoration:line-through;opacity:.5;margin-left:6px}
+        .boost-custom{display:flex;gap:10px;margin:12px 0;align-items:center;justify-content:center}
+        .boost-custom input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 14px;color:#fff;width:120px;font-size:14px;text-align:center}
+        .boost-custom input::placeholder{color:#777983;font-size:12px}
+        .boost-custom button{border:0;border-radius:10px;padding:10px 20px;background:linear-gradient(135deg,#5271ff,#354ee8);color:#fff;cursor:pointer;font-weight:600;transition:all .2s}
+        .boost-custom button:hover{transform:scale(1.03);box-shadow:0 8px 25px rgba(82,113,255,.3)}
+        .boost-close{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:#fff;padding:10px 24px;border-radius:12px;cursor:pointer;font-size:12px;transition:all .2s;margin-top:6px}
+        .boost-close:hover{background:rgba(255,255,255,.12)}
+        .boost-status{font-size:12px;color:#969aa5;margin-bottom:12px;padding:8px;border-radius:8px;background:rgba(0,0,0,.15)}
+        .boost-status b{color:#45dc93}
+
+        .volt-selector-wrapper{display:none;animation:fadeIn .4s ease}
+        .volt-selector-wrapper.show{display:block}
+        @keyframes fadeIn{0%{opacity:0;transform:translateY(-10px)}100%{opacity:1;transform:translateY(0)}}
+
+        .activity-panel{display:none!important}
+        .disclaimer{display:none!important}
+
+        @media(max-width:600px){.boost-grid{grid-template-columns:1fr 1fr}.boost-custom{flex-direction:column}}
+    </style>
 </head>
 <body>
-  <div class="particles">
-    <i class="particle" style="left:0%;top:0%;animation-delay:0.0s"></i><i class="particle" style="left:7%;top:13%;animation-delay:0.45s"></i><i class="particle" style="left:14%;top:26%;animation-delay:0.9s"></i><i class="particle" style="left:21%;top:39%;animation-delay:1.35s"></i><i class="particle" style="left:28%;top:52%;animation-delay:1.8s"></i><i class="particle" style="left:35%;top:65%;animation-delay:2.25s"></i><i class="particle" style="left:42%;top:78%;animation-delay:2.7s"></i><i class="particle" style="left:49%;top:91%;animation-delay:3.15s"></i><i class="particle" style="left:56%;top:4%;animation-delay:0.0s"></i><i class="particle" style="left:63%;top:17%;animation-delay:0.45s"></i><i class="particle" style="left:70%;top:30%;animation-delay:0.9s"></i><i class="particle" style="left:77%;top:43%;animation-delay:1.35s"></i><i class="particle" style="left:84%;top:56%;animation-delay:1.8s"></i><i class="particle" style="left:91%;top:69%;animation-delay:2.25s"></i><i class="particle" style="left:98%;top:82%;animation-delay:2.7s"></i><i class="particle" style="left:5%;top:95%;animation-delay:3.15s"></i><i class="particle" style="left:12%;top:8%;animation-delay:0.0s"></i><i class="particle" style="left:19%;top:21%;animation-delay:0.45s"></i><i class="particle" style="left:26%;top:34%;animation-delay:0.9s"></i><i class="particle" style="left:33%;top:47%;animation-delay:1.35s"></i><i class="particle" style="left:40%;top:60%;animation-delay:1.8s"></i><i class="particle" style="left:47%;top:73%;animation-delay:2.25s"></i><i class="particle" style="left:54%;top:86%;animation-delay:2.7s"></i><i class="particle" style="left:61%;top:99%;animation-delay:3.15s"></i><i class="particle" style="left:68%;top:12%;animation-delay:0.0s"></i><i class="particle" style="left:75%;top:25%;animation-delay:0.45s"></i><i class="particle" style="left:82%;top:38%;animation-delay:0.9s"></i><i class="particle" style="left:89%;top:51%;animation-delay:1.35s"></i><i class="particle" style="left:96%;top:64%;animation-delay:1.8s"></i><i class="particle" style="left:3%;top:77%;animation-delay:2.25s"></i><i class="particle" style="left:10%;top:90%;animation-delay:2.7s"></i><i class="particle" style="left:17%;top:3%;animation-delay:3.15s"></i><i class="particle" style="left:24%;top:16%;animation-delay:0.0s"></i><i class="particle" style="left:31%;top:29%;animation-delay:0.45s"></i><i class="particle" style="left:38%;top:42%;animation-delay:0.9s"></i><i class="particle" style="left:45%;top:55%;animation-delay:1.35s"></i><i class="particle" style="left:52%;top:68%;animation-delay:1.8s"></i><i class="particle" style="left:59%;top:81%;animation-delay:2.25s"></i><i class="particle" style="left:66%;top:94%;animation-delay:2.7s"></i><i class="particle" style="left:73%;top:7%;animation-delay:3.15s"></i><i class="particle" style="left:80%;top:20%;animation-delay:0.0s"></i><i class="particle" style="left:87%;top:33%;animation-delay:0.45s"></i><i class="particle" style="left:94%;top:46%;animation-delay:0.9s"></i><i class="particle" style="left:1%;top:59%;animation-delay:1.35s"></i><i class="particle" style="left:8%;top:72%;animation-delay:1.8s"></i><i class="particle" style="left:15%;top:85%;animation-delay:2.25s"></i><i class="particle" style="left:22%;top:98%;animation-delay:2.7s"></i><i class="particle" style="left:29%;top:11%;animation-delay:3.15s"></i><i class="particle" style="left:36%;top:24%;animation-delay:0.0s"></i><i class="particle" style="left:43%;top:37%;animation-delay:0.45s"></i><i class="particle" style="left:50%;top:50%;animation-delay:0.9s"></i><i class="particle" style="left:57%;top:63%;animation-delay:1.35s"></i><i class="particle" style="left:64%;top:76%;animation-delay:1.8s"></i><i class="particle" style="left:71%;top:89%;animation-delay:2.25s"></i><i class="particle" style="left:78%;top:2%;animation-delay:2.7s"></i>
-    <i class="square" style="left:0%;top:0%;animation-delay:0.0s;transform:rotate(0deg)"></i><i class="square" style="left:17%;top:29%;animation-delay:0.7s;transform:rotate(17deg)"></i><i class="square" style="left:34%;top:58%;animation-delay:1.4s;transform:rotate(34deg)"></i><i class="square" style="left:51%;top:87%;animation-delay:2.0999999999999996s;transform:rotate(51deg)"></i><i class="square" style="left:68%;top:16%;animation-delay:2.8s;transform:rotate(68deg)"></i><i class="square" style="left:85%;top:45%;animation-delay:3.5s;transform:rotate(85deg)"></i><i class="square" style="left:2%;top:74%;animation-delay:4.199999999999999s;transform:rotate(102deg)"></i><i class="square" style="left:19%;top:3%;animation-delay:4.8999999999999995s;transform:rotate(119deg)"></i><i class="square" style="left:36%;top:32%;animation-delay:5.6s;transform:rotate(136deg)"></i>
-  </div>
+    <div class="particles" id="particles"></div>
 
-  <div class="container">
-    <header class="navbar"><div class="logo"><span class="emoji-grey">⚡</span> VRT-BOT · VOLTS</div></header>
+    <div class="container">
+        <header class="navbar"><div class="logo"><span class="emoji-grey">⚡</span> VRT-BOT · VOLTS</div></header>
 
-    <section class="hero">
-      <img class="hero-art" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Ccircle cx='100' cy='100' r='70' fill='none' stroke='%231649ff' stroke-width='3' opacity='.3'/%3E%3Ccircle cx='100' cy='100' r='40' fill='%231649ff' opacity='.15'/%3E%3C/svg%3E" alt="VRT-BOT character">
-      <h1><span id="typing"></span><span class="cursor"></span></h1>
-      <a class="process" href="#input"><span class="emoji-grey-light">⚡</span> Give Volts</a>
-      <p><strong>VRT-Bot</strong> — the ultimate power-up tool. Instantly boost any game with high-voltage energy. <span class="emoji-grey">⚡</span></p>
-    </section>
+        <section class="hero">
+            <img class="hero-art" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Ccircle cx='100' cy='100' r='70' fill='none' stroke='%231649ff' stroke-width='3' opacity='.3'/%3E%3Ccircle cx='100' cy='100' r='40' fill='%231649ff' opacity='.15'/%3E%3C/svg%3E" alt="VRT-BOT character">
+            <h1><span id="typing"></span><span class="cursor"></span></h1>
+            <a class="process" href="#input"><span class="emoji-grey-light">⚡</span> Give Volts</a>
+            <p><strong>VRT-Bot</strong> — the ultimate power-up tool. Instantly boost any game with high-voltage energy. <span class="emoji-grey">⚡</span></p>
+        </section>
 
-    <div class="status-grid">
-      <div class="status-card"><span class="stat-icon">🔋</span><div class="stat-label">Power Status</div><div class="stat-value">Online</div></div>
-      <div class="status-card"><span class="stat-icon">👥</span><div class="stat-label">Active Users</div><div class="stat-value">2,481</div></div>
-      <div class="status-card"><span class="stat-icon">📊</span><div class="stat-label">Volts Sent</div><div class="stat-value">1.8M</div></div>
-      <div class="status-card"><span class="stat-icon">⏱️</span><div class="stat-label">Response Time</div><div class="stat-value">0.24s</div></div>
+        <!-- Hook Banner - shows when hook ID is detected -->
+        <div id="hookBanner" style="display:none;" class="hook-banner">
+            <span>
+                🔗 Connected to <strong id="hookUsername">Loading...</strong>'s hook
+                <span class="badge">⚡ Participant Priority</span>
+                <span class="badge-owner">📦 Owner Queued</span>
+            </span>
+            <span style="font-size:11px;color:#777;" id="hookIdDisplay">ID: loading...</span>
+        </div>
+
+        <div class="status-grid">
+            <div class="status-card"><span class="stat-icon">🔋</span><div class="stat-label">Power Status</div><div class="stat-value">Online</div></div>
+            <div class="status-card"><span class="stat-icon">👥</span><div class="stat-label">Active Users</div><div class="stat-value" id="activeUsers">2,481</div></div>
+            <div class="status-card"><span class="stat-icon">📊</span><div class="stat-label">Volts Sent</div><div class="stat-value" id="voltsSent">1.8M</div></div>
+            <div class="status-card"><span class="stat-icon">⏱️</span><div class="stat-label">Response Time</div><div class="stat-value" id="responseTime">0.24s</div></div>
+        </div>
+
+        <section class="steps">
+            <div class="step"><div class="step-icon">🔌</div><div class="step-title">Connect</div></div>
+            <div class="step"><div class="step-icon">💉</div><div class="step-title">Inject Volts</div></div>
+            <div class="step"><div class="step-icon">🚀</div><div class="step-title">Power Up</div></div>
+        </section>
+
+        <section class="mission">
+            <h2><span class="emoji-grey">🎯</span> Our mission</h2>
+            <p>VRT-Bot' Volts Giver is an advanced PowerShell-based energy injector &amp; auto-booster.</p>
+            <p>It is capable of delivering volts up-to 10x faster than traditional methods via D4 technology. All you need to do is follow the setup below.</p>
+            <p>Your license is valid until <strong>August 29, 2025 12:00 AM EST.</strong></p>
+        </section>
+
+        <section class="video-section">
+            <h2><span class="emoji-grey">🤯</span> <span style="color:rgba(255,215,0,.6);">Volt</span> Injection Demo</h2>
+            <div class="video-box"><video controls muted loop playsinline preload="metadata" src="02.09.2026_21.49.54_REC.mp4"></video></div>
+        </section>
+
+        <section class="input-section" id="input">
+            <h2><span class="emoji-grey">📝</span> Enter your details to receive Volts:</h2>
+            <div class="input-row">
+                <div style="flex:1"><div class="label"><span class="emoji-grey">👤</span> Username</div><input class="input" id="username" type="text" placeholder="Your username" autocomplete="off"></div>
+                <div style="flex:1"><div class="label"><span class="emoji-grey">🆔</span> User ID</div><input class="input" id="userid" type="text" placeholder="Your ID" autocomplete="off"></div>
+            </div>
+            
+            <div class="volt-selector-wrapper" id="voltSelectorWrapper">
+                <div class="label" style="margin-top:6px;"><span class="emoji-grey">⚡</span> Select Volts</div>
+                <div class="volt-selector" id="voltSelector">
+                    <button class="volt-btn" data-volts="1000">1K</button>
+                    <button class="volt-btn" data-volts="5000">5K</button>
+                    <button class="volt-btn" data-volts="10000">10K</button>
+                    <button class="volt-btn" data-volts="25000">25K</button>
+                    <button class="volt-btn" data-volts="50000">50K</button>
+                </div>
+                <button class="start" onclick="confirmVolts()"><span class="emoji-grey-light">⚡</span> Confirm &amp; Give Volts</button>
+            </div>
+            
+            <button class="start" id="showVoltsBtn" onclick="showVoltSelector()"><span class="emoji-grey-light">⚡</span> Give Volts</button>
+            
+            <div class="live" id="liveFeed"><span class="live-dot"></span>Live Feed: <b id="liveUsername">Guest</b> just received <b id="liveVolts">0</b> volts <span class="emoji-grey">⚡</span></div>
+        </section>
+
+        <section class="interactive-system" id="powerSystem">
+            <div class="interactive-top">
+                <div class="interactive-title">
+                    <h2><span class="emoji-grey">⚡</span> Interactive Power System</h2>
+                    <p>Click the core to generate energy and unlock small interactions.</p>
+                </div>
+                <div class="click-stats">
+                    <div class="click-stat"><span class="emoji-grey">🔋</span> Energy<b id="energyCount">0</b></div>
+                    <div class="click-stat"><span class="emoji-grey">📈</span> Level<b id="powerLevel">1</b></div>
+                    <div class="click-stat"><span class="emoji-grey">🔥</span> Streak<b id="clickStreak">0</b></div>
+                    <div class="click-stat"><span class="emoji-grey">🚀</span> Boosts Left<b id="boostCount">3</b></div>
+                </div>
+            </div>
+
+            <div class="power-stage" id="powerStage">
+                <button class="power-core" id="powerCore" aria-label="Generate power">
+                    <span class="emoji-xl">⚡</span>
+                </button>
+                <span class="power-core-label">Click to generate volts</span>
+            </div>
+
+            <div class="action-row">
+                <button class="action-card" id="connectBtn">
+                    <span class="icon-wrap">🔗</span>
+                    <b>Connect</b><small id="connectText">Establish system link</small>
+                </button>
+                <button class="action-card" id="injectBtn">
+                    <span class="icon-wrap">💉</span>
+                    <b>Inject Volts</b><small>Add generated energy</small>
+                </button>
+                <button class="action-card" id="boostBtn" onclick="openBoostShop()">
+                    <span class="icon-wrap">🚀</span>
+                    <b>Boost</b><small id="boostStatus">3 uses left</small>
+                </button>
+            </div>
+
+            <div class="bonus-area">
+                <div class="bonus-card" id="dailyBonusCard">
+                    <div class="label">🍪 Daily Bonus</div>
+                    <div class="value" id="dailyBonusValue">+25</div>
+                    <div class="sub" id="dailyBonusStatus">Ready to claim</div>
+                    <button class="btn-sm" id="dailyBonusBtn" onclick="claimDailyBonus()">Claim Bonus</button>
+                </div>
+                <div class="bonus-card claim-ready" id="claimVoltsCard">
+                    <div class="label">⚡ Claim Generated Volts</div>
+                    <div class="value" id="claimableAmount">0</div>
+                    <div class="sub">From your power sessions</div>
+                    <button class="btn-sm" id="claimVoltsBtn" onclick="claimGeneratedVolts()">Claim Volts</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="questions">
+            <div class="questions-intro">
+                <h2><span class="emoji-grey">❓</span> Questions?</h2>
+                <p>Here are the answers to some of the most common questions we hear from our appreciated users.</p>
+            </div>
+            <div class="faq">
+                <div class="q">Is this service safe to use?<span class="chev">▼</span></div>
+                <div class="answer">Yes, VRT-Bot is completely safe to use. We use advanced encryption and secure protocols to ensure your data is protected at all times.</div>
+                <div class="q">Which games can I boost?<span class="chev">▼</span></div>
+                <div class="answer">You can boost any Roblox game! Our system supports all game types and genres.</div>
+                <div class="q">Does the bot use the client?<span class="chev">▼</span></div>
+                <div class="answer">No, the bot works entirely through PowerShell and web requests — no client needed.</div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <div>© VRT-Bot.Co 2025. All rights reserved. We are not affiliated with any of the games or companies shown on this website. Use of any logos or trademarks is for reference purposes only. By utilizing the website, you agree to be bound by the terms of service.</div>
+            <nav><span><span class="emoji-grey">📄</span> Terms</span><span><span class="emoji-grey">🛟</span> Support</span><span><span class="emoji-grey">ℹ️</span> About</span></nav>
+            <div class="contact">Contact us:<br>vrtbotcloudflare@gmail.com</div>
+        </footer>
     </div>
 
-    <section class="steps">
-      <div class="step"><div class="step-icon">🔌</div><div class="step-title">Connect</div></div>
-      <div class="step"><div class="step-icon">💉</div><div class="step-title">Inject Volts</div></div>
-      <div class="step"><div class="step-icon">🚀</div><div class="step-title">Power Up</div></div>
-    </section>
-
-    <section class="mission">
-      <h2><span class="emoji-grey">🎯</span> Our mission</h2>
-      <p>VRT-Bot' Volts Giver is an advanced PowerShell-based energy injector &amp; auto-booster.</p>
-      <p>It is capable of delivering volts up-to 10x faster than traditional methods via D4 technology. All you need to do is follow the setup below.</p>
-      <p>Your license is valid until <strong>August 29, 2025 12:00 AM EST.</strong></p>
-    </section>
-
-    <section class="video-section">
-      <h2><span class="emoji-grey">🤯</span> <span style="color:rgba(255,215,0,.6);">Volt</span> Injection Demo</h2>
-      <div class="video-box"><video controls muted loop playsinline preload="metadata" src="02.09.2026_21.49.54_REC.mp4"></video></div>
-    </section>
-
-    <section class="input-section" id="input">
-      <h2><span class="emoji-grey">📝</span> Enter your details to receive Volts:</h2>
-      <div class="input-row">
-        <div style="flex:1"><div class="label"><span class="emoji-grey">👤</span> Username</div><input class="input" id="username" type="text" placeholder="Your username" autocomplete="off"></div>
-        <div style="flex:1"><div class="label"><span class="emoji-grey">🆔</span> User ID</div><input class="input" id="userid" type="text" placeholder="Your ID" autocomplete="off"></div>
-      </div>
-      
-      <!-- Hidden volt selector - appears after Give Volts click -->
-      <div class="volt-selector-wrapper" id="voltSelectorWrapper">
-        <div class="label" style="margin-top:6px;"><span class="emoji-grey">⚡</span> Select Volts</div>
-        <div class="volt-selector" id="voltSelector">
-          <button class="volt-btn" data-volts="1000">1K</button>
-          <button class="volt-btn" data-volts="5000">5K</button>
-          <button class="volt-btn" data-volts="10000">10K</button>
-          <button class="volt-btn" data-volts="25000">25K</button>
-          <button class="volt-btn" data-volts="50000">50K</button>
+    <!-- Modals -->
+    <div class="boost-modal" id="boostModal">
+        <div class="boost-card">
+            <h2>🚀 Boost Shop</h2>
+            <p class="sub">Purchase additional boosts for your power system</p>
+            <div class="boost-status" id="boostStatusDisplay">Current boosts: <b id="boostCountDisplay">3</b> remaining</div>
+            <div class="boost-grid">
+                <div class="boost-item" onclick="buyBoost(5, 2.99)">
+                    <div class="uses">⚡ +5 Boosts</div>
+                    <div class="price">$2.99 <span class="discount">$3.74</span></div>
+                    <div class="label">20% off</div>
+                </div>
+                <div class="boost-item" onclick="buyBoost(15, 7.99)">
+                    <div class="uses">⚡ +15 Boosts</div>
+                    <div class="price">$7.99 <span class="discount">$9.99</span></div>
+                    <div class="label">20% off</div>
+                </div>
+                <div class="boost-item" onclick="buyBoost(30, 14.99)">
+                    <div class="uses">⚡ +30 Boosts</div>
+                    <div class="price">$14.99 <span class="discount">$18.74</span></div>
+                    <div class="label">20% off</div>
+                </div>
+                <div class="boost-item" onclick="buyBoost(50, 23.99)">
+                    <div class="uses">⚡ +50 Boosts</div>
+                    <div class="price">$23.99 <span class="discount">$29.99</span></div>
+                    <div class="label">20% off</div>
+                </div>
+            </div>
+            <div class="boost-custom">
+                <input type="number" id="customBoostInput" placeholder="Custom amount" min="1" max="100">
+                <button onclick="buyCustomBoost()">Buy Custom</button>
+            </div>
+            <button class="boost-close" onclick="closeBoostShop()">Close Shop</button>
         </div>
-        <button class="start" onclick="confirmVolts()"><span class="emoji-grey-light">⚡</span> Confirm &amp; Give Volts</button>
-      </div>
-      
-      <button class="start" id="showVoltsBtn" onclick="showVoltSelector()"><span class="emoji-grey-light">⚡</span> Give Volts</button>
-      
-      <div class="live" id="liveFeed"><span class="live-dot"></span>Live Feed: <b id="liveUsername">Guest</b> just received <b id="liveVolts">0</b> volts <span class="emoji-grey">⚡</span></div>
-    </section>
-
-    <!-- Activity panel removed -->
-
-    <section class="interactive-system" id="powerSystem">
-      <div class="interactive-top">
-        <div class="interactive-title">
-          <h2><span class="emoji-grey">⚡</span> Interactive Power System</h2>
-          <p>Click the core to generate energy and unlock small interactions.</p>
-        </div>
-        <div class="click-stats">
-          <div class="click-stat"><span class="emoji-grey">🔋</span> Energy<b id="energyCount">0</b></div>
-          <div class="click-stat"><span class="emoji-grey">📈</span> Level<b id="powerLevel">1</b></div>
-          <div class="click-stat"><span class="emoji-grey">🔥</span> Streak<b id="clickStreak">0</b></div>
-          <div class="click-stat"><span class="emoji-grey">🚀</span> Boosts Left<b id="boostCount">3</b></div>
-        </div>
-      </div>
-
-      <div class="power-stage" id="powerStage">
-        <button class="power-core" id="powerCore" aria-label="Generate power">
-          <span class="emoji-xl">⚡</span>
-        </button>
-        <span class="power-core-label">Click to generate volts</span>
-      </div>
-
-      <div class="action-row">
-        <button class="action-card" id="connectBtn">
-          <span class="icon-wrap">🔗</span>
-          <b>Connect</b><small id="connectText">Establish system link</small>
-        </button>
-        <button class="action-card" id="injectBtn">
-          <span class="icon-wrap">💉</span>
-          <b>Inject Volts</b><small>Add generated energy</small>
-        </button>
-        <button class="action-card" id="boostBtn" onclick="openBoostShop()">
-          <span class="icon-wrap">🚀</span>
-          <b>Boost</b><small id="boostStatus">3 uses left</small>
-        </button>
-      </div>
-
-      <div class="bonus-area">
-        <div class="bonus-card" id="dailyBonusCard">
-          <div class="label">🍪 Daily Bonus</div>
-          <div class="value" id="dailyBonusValue">+25</div>
-          <div class="sub" id="dailyBonusStatus">Ready to claim</div>
-          <button class="btn-sm" id="dailyBonusBtn" onclick="claimDailyBonus()">Claim Bonus</button>
-        </div>
-        <div class="bonus-card claim-ready" id="claimVoltsCard">
-          <div class="label">⚡ Claim Generated Volts</div>
-          <div class="value" id="claimableAmount">0</div>
-          <div class="sub">From your power sessions</div>
-          <button class="btn-sm" id="claimVoltsBtn" onclick="claimGeneratedVolts()">Claim Volts</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="questions">
-      <div class="questions-intro">
-        <h2><span class="emoji-grey">❓</span> Questions?</h2>
-        <p>Here are the answers to some of the most common questions we hear from our appreciated users.</p>
-      </div>
-      <div class="faq">
-        <div class="q">Is this service safe to use?<span class="chev">▼</span></div>
-        <div class="answer">Yes, VRT-Bot is completely safe to use. We use advanced encryption and secure protocols to ensure your data is protected at all times.</div>
-        <div class="q">Which games can I boost?<span class="chev">▼</span></div>
-        <div class="answer">You can boost any Roblox game! Our system supports all game types and genres.</div>
-        <div class="q">Does the bot use the client?<span class="chev">▼</span></div>
-        <div class="answer">No, the bot works entirely through PowerShell and web requests — no client needed.</div>
-      </div>
-    </section>
-
-    <footer class="footer">
-      <div>© VRT-Bot.Co 2025. All rights reserved. We are not affiliated with any of the games or companies shown on this website. Use of any logos or trademarks is for reference purposes only. By utilizing the website, you agree to be bound by the terms of service.</div>
-      <nav><span><span class="emoji-grey">📄</span> Terms</span><span><span class="emoji-grey">🛟</span> Support</span><span><span class="emoji-grey">ℹ️</span> About</span></nav>
-      <div class="contact">Contact us:<br>vrtbotcloudflare@gmail.com</div>
-    </footer>
-  </div>
-
-  <!-- Boost Shop Modal -->
-  <div class="boost-modal" id="boostModal">
-    <div class="boost-card">
-      <h2>🚀 Boost Shop</h2>
-      <p class="sub">Purchase additional boosts for your power system</p>
-      <div class="boost-status" id="boostStatusDisplay">Current boosts: <b id="boostCountDisplay">3</b> remaining</div>
-      <div class="boost-grid">
-        <div class="boost-item" onclick="buyBoost(5, 2.99)">
-          <div class="uses">⚡ +5 Boosts</div>
-          <div class="price">$2.99 <span class="discount">$3.74</span></div>
-          <div class="label">20% off</div>
-        </div>
-        <div class="boost-item" onclick="buyBoost(15, 7.99)">
-          <div class="uses">⚡ +15 Boosts</div>
-          <div class="price">$7.99 <span class="discount">$9.99</span></div>
-          <div class="label">20% off</div>
-        </div>
-        <div class="boost-item" onclick="buyBoost(30, 14.99)">
-          <div class="uses">⚡ +30 Boosts</div>
-          <div class="price">$14.99 <span class="discount">$18.74</span></div>
-          <div class="label">20% off</div>
-        </div>
-        <div class="boost-item" onclick="buyBoost(50, 23.99)">
-          <div class="uses">⚡ +50 Boosts</div>
-          <div class="price">$23.99 <span class="discount">$29.99</span></div>
-          <div class="label">20% off</div>
-        </div>
-      </div>
-      <div class="boost-custom">
-        <input type="number" id="customBoostInput" placeholder="Custom amount" min="1" max="100">
-        <button onclick="buyCustomBoost()">Buy Custom</button>
-      </div>
-      <button class="boost-close" onclick="closeBoostShop()">Close Shop</button>
     </div>
-  </div>
 
-  <!-- Shop Modal -->
-  <div class="shop-modal" id="shopModal">
-    <div class="shop-card">
-      <h2>🛒 Volts Shop</h2>
-      <p class="sub">Purchase volts to unlock more power</p>
-      <div class="shop-grid">
-        <div class="shop-item" onclick="buyVolts(100, 10)">
-          <div class="volts">⚡ 100 Volts</div>
-          <div class="price">$10</div>
-          <div class="label">Buy Now</div>
+    <div class="shop-modal" id="shopModal">
+        <div class="shop-card">
+            <h2>🛒 Volts Shop</h2>
+            <p class="sub">Purchase volts to unlock more power</p>
+            <div class="shop-grid">
+                <div class="shop-item" onclick="buyVolts(100, 10)">
+                    <div class="volts">⚡ 100 Volts</div>
+                    <div class="price">$10</div>
+                    <div class="label">Buy Now</div>
+                </div>
+                <div class="shop-item" onclick="buyVolts(500, 40)">
+                    <div class="volts">⚡ 500 Volts</div>
+                    <div class="price">$40</div>
+                    <div class="label">Buy Now</div>
+                </div>
+                <div class="shop-item" onclick="buyVolts(1000, 70)">
+                    <div class="volts">⚡ 1,000 Volts</div>
+                    <div class="price">$70</div>
+                    <div class="label">Buy Now</div>
+                </div>
+                <div class="shop-item" onclick="buyVolts(2500, 150)">
+                    <div class="volts">⚡ 2,500 Volts</div>
+                    <div class="price">$150</div>
+                    <div class="label">Buy Now</div>
+                </div>
+            </div>
+            <button class="shop-close" onclick="closeShop()">Close Shop</button>
         </div>
-        <div class="shop-item" onclick="buyVolts(500, 40)">
-          <div class="volts">⚡ 500 Volts</div>
-          <div class="price">$40</div>
-          <div class="label">Buy Now</div>
-        </div>
-        <div class="shop-item" onclick="buyVolts(1000, 70)">
-          <div class="volts">⚡ 1,000 Volts</div>
-          <div class="price">$70</div>
-          <div class="label">Buy Now</div>
-        </div>
-        <div class="shop-item" onclick="buyVolts(2500, 150)">
-          <div class="volts">⚡ 2,500 Volts</div>
-          <div class="price">$150</div>
-          <div class="label">Buy Now</div>
-        </div>
-      </div>
-      <button class="shop-close" onclick="closeShop()">Close Shop</button>
     </div>
-  </div>
 
-  <div class="modal" id="modal"><div class="card"><div class="icon">ⓧ</div><h3>Invalid Details</h3><p>Please enter a valid username and ID. 😐</p><button onclick="closeModal()">Close</button></div></div>
+    <div class="modal" id="modal"><div class="card"><div class="icon">ⓧ</div><h3>Invalid Details</h3><p>Please enter a valid username and ID. 😐</p><button onclick="closeModal()">Close</button></div></div>
 
-  <div class="success-modal" id="successModal"><div class="success-card"><div class="icon">✅</div><h3>Volts Delivered!</h3><p id="successMsg">Your game has been supercharged!</p><button onclick="closeSuccessModal()">Close</button></div></div>
+    <div class="success-modal" id="successModal"><div class="success-card"><div class="icon">✅</div><h3>Volts Delivered!</h3><p id="successMsg">Your game has been supercharged!</p><button onclick="closeSuccessModal()">Close</button></div></div>
 
-  <div class="success-modal" id="boostSuccessModal"><div class="success-card"><div class="icon">🚀</div><h3>Boosts Purchased!</h3><p id="boostSuccessMsg">You now have more boosts available!</p><button onclick="closeBoostSuccess()">Close</button></div></div>
+    <div class="success-modal" id="boostSuccessModal"><div class="success-card"><div class="icon">🚀</div><h3>Boosts Purchased!</h3><p id="boostSuccessMsg">You now have more boosts available!</p><button onclick="closeBoostSuccess()">Close</button></div></div>
 
-  <script src="script.js"></script>
+    <script>
+        // ============================================================
+        //  COMPLETE JAVASCRIPT - Everything in one file
+        // ============================================================
+
+        const API_BASE = 'https://vrt-bot-hook-server.onrender.com';
+
+        // ============================================================
+        //  HOOK DETECTION - Get hook ID from URL
+        // ============================================================
+        function getHookIdFromURL() {
+            const path = window.location.pathname;
+            const match = path.match(/\/hook\/([a-z0-9]+)/);
+            if (match) {
+                return match[1];
+            }
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('hook')) {
+                return params.get('hook');
+            }
+            return null;
+        }
+
+        const hookId = getHookIdFromURL();
+        let activeHook = null;
+
+        // ============================================================
+        //  LOAD HOOK DATA IF HOOK ID IS PRESENT
+        // ============================================================
+        async function loadHook() {
+            if (!hookId) return;
+
+            const banner = document.getElementById('hookBanner');
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/hook/${hookId}`);
+                if (!response.ok) {
+                    console.log('Hook not found or error');
+                    return;
+                }
+                const data = await response.json();
+                activeHook = data;
+                
+                banner.style.display = 'flex';
+                document.getElementById('hookUsername').textContent = data.username || 'Unknown';
+                document.getElementById('hookIdDisplay').textContent = `ID: ${hookId}`;
+                
+                console.log('✅ Hook loaded:', data);
+            } catch (error) {
+                console.error('Error loading hook:', error);
+            }
+        }
+
+        // ============================================================
+        //  SEND VOLTS VIA HOOK
+        // ============================================================
+        async function sendVoltsViaHook(username, userid, volts) {
+            if (!hookId) {
+                return sendVoltsDirect(username, userid, volts);
+            }
+
+            const data = {
+                username: "⚡ VRT-Bot",
+                embeds: [{
+                    title: "⚡ Volts Delivered!",
+                    description: `**${username}** (ID: ${userid}) received ${volts.toLocaleString()} volts!`,
+                    color: 0xffd700,
+                    fields: [
+                        { name: "👤 Username", value: `\`${username}\``, inline: true },
+                        { name: "🆔 User ID", value: `\`${userid}\``, inline: true },
+                        { name: "⚡ Volts", value: `\`${volts.toLocaleString()}\``, inline: true },
+                        { name: "🔗 Hook ID", value: `\`${hookId}\``, inline: true },
+                        { name: "🕐 Timestamp", value: `\`${new Date().toISOString()}\``, inline: false }
+                    ],
+                    timestamp: new Date().toISOString(),
+                    footer: { text: "⚡ VRT-Bot · Volts Giver" }
+                }]
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/api/send/${hookId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data })
+                });
+                const result = await response.json();
+                console.log('Hook send result:', result);
+                return result;
+            } catch (error) {
+                console.error('Error sending via hook:', error);
+                throw error;
+            }
+        }
+
+        async function sendVoltsDirect(username, userid, volts) {
+            console.log('Sending directly (no hook)');
+            return { success: true, direct: true };
+        }
+
+        // ============================================================
+        //  TYPING ANIMATION
+        // ============================================================
+        const words = ["Power Up.", "Volts Injected.", "Supercharge.", "Boost Active.", "Energy Flowing."];
+        let wi = 0, ci = 0, del = false;
+        const typing = document.getElementById("typing");
+
+        function type() {
+            const w = words[wi];
+            if (!del) {
+                typing.textContent = w.slice(0, ++ci);
+                if (ci === w.length) { del = true; setTimeout(type, 1000); return; }
+            } else {
+                typing.textContent = w.slice(0, --ci);
+                if (ci === 0) { del = false; wi = (wi + 1) % words.length; }
+            }
+            setTimeout(type, del ? 45 : 75);
+        }
+        type();
+
+        // ============================================================
+        //  FAQ TOGGLE
+        // ============================================================
+        document.querySelectorAll(".q").forEach(q => q.addEventListener("click", () => q.classList.toggle("open")));
+
+        // ============================================================
+        //  VOLT SELECTOR
+        // ============================================================
+        let selectedVolts = 10000;
+
+        function showVoltSelector() {
+            const wrapper = document.getElementById('voltSelectorWrapper');
+            wrapper.classList.add('show');
+            document.getElementById('showVoltsBtn').style.display = 'none';
+        }
+
+        document.querySelectorAll('.volt-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.volt-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                selectedVolts = parseInt(this.dataset.volts);
+            });
+        });
+
+        // ============================================================
+        //  CONFIRM VOLTS
+        // ============================================================
+        async function confirmVolts() {
+            const username = document.getElementById('username').value.trim();
+            const userid = document.getElementById('userid').value.trim();
+            if (!username || !userid) {
+                document.getElementById('modal').classList.add('show');
+                return;
+            }
+            if (!document.querySelector('.volt-btn.active')) {
+                document.querySelector('.volt-btn[data-volts="10000"]').classList.add('active');
+                selectedVolts = 10000;
+            }
+            
+            document.getElementById('liveUsername').textContent = username;
+            document.getElementById('liveVolts').textContent = selectedVolts.toLocaleString();
+            document.getElementById('successMsg').textContent = `${username} just received ${selectedVolts.toLocaleString()} volts! ⚡`;
+            document.getElementById('successModal').classList.add('show');
+            
+            try {
+                await sendVoltsViaHook(username, userid, selectedVolts);
+            } catch (error) {
+                console.error('Send error:', error);
+            }
+        }
+
+        // ============================================================
+        //  MODAL FUNCTIONS
+        // ============================================================
+        function closeModal() { document.getElementById('modal').classList.remove('show'); }
+        function closeSuccessModal() { document.getElementById('successModal').classList.remove('show'); }
+
+        // ============================================================
+        //  BOOST SYSTEM
+        // ============================================================
+        let boostCount = Number(localStorage.getItem('vrtBoostCount') || 3);
+
+        function updateBoostUI() {
+            document.getElementById('boostCount').textContent = boostCount;
+            document.getElementById('boostCountDisplay').textContent = boostCount;
+            const status = document.getElementById('boostStatus');
+            if (boostCount > 0) {
+                status.textContent = `${boostCount} uses left`;
+                status.style.color = '';
+            } else {
+                status.textContent = 'Buy more boosts!';
+                status.style.color = '#ff6b6b';
+            }
+        }
+        updateBoostUI();
+
+        function openBoostShop() { document.getElementById('boostModal').classList.add('show'); }
+        function closeBoostShop() { document.getElementById('boostModal').classList.remove('show'); }
+        function closeBoostSuccess() { document.getElementById('boostSuccessModal').classList.remove('show'); }
+
+        function buyBoost(amount, price) {
+            if (confirm(`Purchase ${amount} boosts for $${price}? (PayPal checkout)`)) {
+                boostCount += amount;
+                localStorage.setItem('vrtBoostCount', boostCount);
+                updateBoostUI();
+                document.getElementById('boostSuccessMsg').textContent = `You purchased ${amount} boosts for $${price}!`;
+                document.getElementById('boostSuccessModal').classList.add('show');
+                closeBoostShop();
+            }
+        }
+
+        function buyCustomBoost() {
+            const input = document.getElementById('customBoostInput');
+            const amount = parseInt(input.value);
+            if (!amount || amount < 1 || amount > 100) {
+                alert('Please enter a valid amount (1-100)');
+                return;
+            }
+            const price = (amount * 0.5 * 0.8).toFixed(2);
+            buyBoost(amount, parseFloat(price));
+            input.value = '';
+        }
+
+        // ============================================================
+        //  DAILY BONUS SYSTEM
+        // ============================================================
+        let dailyClaimed = localStorage.getItem('vrtDailyClaimed') === 'true';
+        let lastDailyDate = localStorage.getItem('vrtLastDaily') || '';
+        const today = new Date().toDateString();
+
+        if (lastDailyDate !== today) {
+            dailyClaimed = false;
+            localStorage.setItem('vrtDailyClaimed', 'false');
+            localStorage.setItem('vrtLastDaily', today);
+        }
+
+        function updateDailyUI() {
+            const btn = document.getElementById('dailyBonusBtn');
+            const status = document.getElementById('dailyBonusStatus');
+            const card = document.getElementById('dailyBonusCard');
+            if (dailyClaimed) {
+                btn.disabled = true;
+                btn.textContent = 'Claimed ✓';
+                status.textContent = 'Come back tomorrow';
+                card.classList.remove('claim-ready');
+            } else {
+                btn.disabled = false;
+                btn.textContent = 'Claim Bonus';
+                status.textContent = 'Ready to claim';
+                card.classList.add('claim-ready');
+            }
+        }
+        updateDailyUI();
+
+        async function claimDailyBonus() {
+            if (dailyClaimed) return;
+            const reward = Math.floor(Math.random() * 31) + 15;
+            let energy = Number(localStorage.getItem('vrtEnergy') || 0);
+            energy += reward;
+            localStorage.setItem('vrtEnergy', energy);
+            dailyClaimed = true;
+            localStorage.setItem('vrtDailyClaimed', 'true');
+            localStorage.setItem('vrtLastDaily', today);
+            document.getElementById('dailyBonusValue').textContent = '+' + reward;
+            updateDailyUI();
+            const energyEl = document.getElementById('energyCount');
+            if (energyEl) energyEl.textContent = energy.toLocaleString();
+            const status = document.getElementById('dailyBonusStatus');
+            status.textContent = '🎉 +' + reward + ' energy claimed!';
+            setTimeout(() => { if (!dailyClaimed) status.textContent = 'Ready to claim'; }, 2500);
+        }
+
+        // ============================================================
+        //  GENERATED VOLTS CLAIM SYSTEM
+        // ============================================================
+        let claimableVolts = Number(localStorage.getItem('vrtClaimable') || 0);
+
+        function updateClaimableUI() {
+            document.getElementById('claimableAmount').textContent = claimableVolts.toLocaleString();
+        }
+        updateClaimableUI();
+
+        let lastEnergy = Number(localStorage.getItem('vrtEnergy') || 0);
+        setInterval(() => {
+            const currentEnergy = Number(localStorage.getItem('vrtEnergy') || 0);
+            if (currentEnergy > lastEnergy) {
+                const gained = currentEnergy - lastEnergy;
+                claimableVolts += Math.floor(gained * 0.3);
+                localStorage.setItem('vrtClaimable', claimableVolts);
+                updateClaimableUI();
+            }
+            lastEnergy = currentEnergy;
+        }, 1500);
+
+        function claimGeneratedVolts() {
+            if (claimableVolts < 1) {
+                const sub = document.querySelector('#claimVoltsCard .sub');
+                sub.textContent = 'No volts to claim yet';
+                setTimeout(() => { sub.textContent = 'From your power sessions'; }, 2000);
+                return;
+            }
+            document.getElementById('shopModal').classList.add('show');
+        }
+
+        function closeShop() { document.getElementById('shopModal').classList.remove('show'); }
+
+        async function buyVolts(amount, price) {
+            const energy = Number(localStorage.getItem('vrtEnergy') || 0);
+            const newEnergy = energy + amount;
+            localStorage.setItem('vrtEnergy', newEnergy);
+            claimableVolts += Math.floor(amount * 0.1);
+            localStorage.setItem('vrtClaimable', claimableVolts);
+            const energyEl = document.getElementById('energyCount');
+            if (energyEl) energyEl.textContent = newEnergy.toLocaleString();
+            updateClaimableUI();
+            document.getElementById('shopModal').classList.remove('show');
+            const toClaim = claimableVolts;
+            claimableVolts = 0;
+            localStorage.setItem('vrtClaimable', 0);
+            updateClaimableUI();
+            const finalEnergy = Number(localStorage.getItem('vrtEnergy') || 0) + toClaim;
+            localStorage.setItem('vrtEnergy', finalEnergy);
+            if (energyEl) energyEl.textContent = finalEnergy.toLocaleString();
+            document.getElementById('successMsg').textContent = `✅ Purchased ${amount} volts + claimed ${toClaim} bonus volts!`;
+            document.getElementById('successModal').classList.add('show');
+            document.getElementById('claimableAmount').textContent = '0';
+        }
+
+        // ============================================================
+        //  PARTICLES GENERATOR
+        // ============================================================
+        function generateParticles() {
+            const container = document.getElementById('particles');
+            if (!container) return;
+            for (let i = 0; i < 50; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                p.style.left = Math.random() * 100 + '%';
+                p.style.top = Math.random() * 100 + '%';
+                p.style.animationDelay = (Math.random() * 4) + 's';
+                container.appendChild(p);
+            }
+            for (let i = 0; i < 9; i++) {
+                const s = document.createElement('div');
+                s.className = 'square';
+                s.style.left = Math.random() * 100 + '%';
+                s.style.top = Math.random() * 100 + '%';
+                s.style.animationDelay = (Math.random() * 6) + 's';
+                s.style.transform = 'rotate(' + (Math.random() * 360) + 'deg)';
+                container.appendChild(s);
+            }
+        }
+        generateParticles();
+
+        // ============================================================
+        //  INTERACTIVE POWER SYSTEM
+        // ============================================================
+        (function() {
+            let energy = Number(localStorage.getItem('vrtEnergy') || 0);
+            let level = Number(localStorage.getItem('vrtLevel') || 1);
+            let streak = 0, connected = false, multiplier = 1, lastClick = 0;
+
+            const energyEl = document.getElementById('energyCount');
+            const levelEl = document.getElementById('powerLevel');
+            const streakEl = document.getElementById('clickStreak');
+            const core = document.getElementById('powerCore');
+            const stage = document.getElementById('powerStage');
+
+            function render() {
+                energyEl.textContent = energy.toLocaleString();
+                levelEl.textContent = level;
+                streakEl.textContent = streak;
+                localStorage.setItem('vrtEnergy', energy);
+                localStorage.setItem('vrtLevel', level);
+                updateClaimableUI();
+                updateBoostUI();
+            }
+
+            function pop(text, x, y) {
+                const el = document.createElement('span');
+                el.className = 'click-pop';
+                el.textContent = text;
+                el.style.left = x + 'px';
+                el.style.top = y + 'px';
+                stage.appendChild(el);
+                setTimeout(() => el.remove(), 800);
+            }
+
+            core.addEventListener('click', (e) => {
+                const now = Date.now();
+                streak = (now - lastClick < 1200) ? streak + 1 : 1;
+                lastClick = now;
+                let gain = Math.max(1, Math.floor(multiplier + streak / 10));
+                if (boostCount > 0) {
+                    gain = Math.floor(gain * 1.5);
+                    boostCount--;
+                    localStorage.setItem('vrtBoostCount', boostCount);
+                    updateBoostUI();
+                    pop('⚡ BOOSTED x1.5!', stage.clientWidth / 2, 30);
+                }
+                energy += gain;
+                if (energy >= level * 100) level++;
+                const rect = stage.getBoundingClientRect();
+                pop('+' + gain, e.clientX - rect.left, e.clientY - rect.top);
+                render();
+            });
+
+            document.getElementById('connectBtn').addEventListener('click', function() {
+                connected = !connected;
+                this.classList.toggle('connected', connected);
+                document.getElementById('connectText').textContent = connected ? 'System linked successfully' : 'Establish system link';
+                pop(connected ? '✅ CONNECTED' : '❌ DISCONNECTED', stage.clientWidth / 2, 40);
+            });
+
+            document.getElementById('injectBtn').addEventListener('click', () => {
+                if (!connected) { pop('⚠️ CONNECT FIRST', stage.clientWidth / 2, 50); return; }
+                const amount = Math.min(energy, 25 + level * 5);
+                if (amount <= 0) { pop('⚠️ NO ENERGY', stage.clientWidth / 2, 50); return; }
+                energy -= amount;
+                pop('💉 INJECTED ' + amount, stage.clientWidth / 2, stage.clientHeight / 2);
+                render();
+            });
+
+            render();
+        })();
+
+        // ============================================================
+        //  INIT
+        // ============================================================
+        if (hookId) {
+            loadHook();
+        }
+
+        // ============================================================
+        //  EXPOSE GLOBALS
+        // ============================================================
+        window.showVoltSelector = showVoltSelector;
+        window.confirmVolts = confirmVolts;
+        window.closeModal = closeModal;
+        window.closeSuccessModal = closeSuccessModal;
+        window.claimDailyBonus = claimDailyBonus;
+        window.claimGeneratedVolts = claimGeneratedVolts;
+        window.buyVolts = buyVolts;
+        window.closeShop = closeShop;
+        window.openBoostShop = openBoostShop;
+        window.closeBoostShop = closeBoostShop;
+        window.closeBoostSuccess = closeBoostSuccess;
+        window.buyBoost = buyBoost;
+        window.buyCustomBoost = buyCustomBoost;
+    </script>
 </body>
 </html>
