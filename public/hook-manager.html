@@ -1,546 +1,331 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VRT-BOT · Dual Hook Manager</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>VRT-BOT · Dual Hook Setup</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0e0f11;
-            color: #f3f3f4;
-            min-height: 100vh;
-            display: grid;
-            place-items: center;
-            padding: 20px;
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{
+            font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+            background:#0e0f11;color:#f3f3f4;
+            min-height:100vh;display:grid;place-items:center;padding:20px;
         }
-        .hook-container {
-            width: min(650px, 100%);
-            background: rgba(34, 35, 40, .62);
-            border: 1px solid rgba(255,255,255,.09);
-            border-radius: 24px;
-            padding: 40px;
-            backdrop-filter: blur(20px);
-            box-shadow: 0 25px 80px rgba(0,0,0,.4);
+        .container{
+            width:min(600px,100%);
+            background:rgba(34,35,40,.62);
+            border:1px solid rgba(255,255,255,.09);
+            border-radius:24px;
+            padding:40px;
+            backdrop-filter:blur(20px);
+            box-shadow:0 25px 80px rgba(0,0,0,.4);
         }
-        .hook-container h1 {
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 6px;
-            background: linear-gradient(135deg,#f0f2f5 30%,rgba(160,170,190,.6));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        h1{font-size:24px;font-weight:600;margin-bottom:6px;}
+        h1 span{color:#5271ff;}
+        .sub{color:#969aa5;font-size:13px;margin-bottom:28px;}
+        .input-group{display:flex;flex-direction:column;gap:12px;}
+        .input-group input{
+            padding:12px 16px;
+            background:rgba(255,255,255,.04);
+            border:1px solid rgba(255,255,255,.08);
+            border-radius:12px;
+            color:#fff;
+            font-size:14px;
+            transition:.2s;
         }
-        .hook-container .sub {
-            color: #969aa5;
-            font-size: 13px;
-            margin-bottom: 28px;
+        .input-group input:focus{border-color:rgba(82,113,255,.5);outline:none;}
+        .input-group input::placeholder{color:#777983;}
+        .btn-primary{
+            padding:14px;
+            border:0;
+            border-radius:12px;
+            background:linear-gradient(135deg,#5271ff,#354ee8);
+            color:#fff;
+            font-weight:600;
+            font-size:15px;
+            cursor:pointer;
+            transition:.2s;
         }
-        .hook-group {
-            background: rgba(0,0,0,.2);
-            border: 1px solid rgba(255,255,255,.06);
-            border-radius: 14px;
-            padding: 20px;
-            margin-bottom: 18px;
+        .btn-primary:hover{transform:scale(1.02);box-shadow:0 8px 30px rgba(82,113,255,.3);}
+        .btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+        .result-box{
+            margin-top:20px;
+            padding:16px;
+            border-radius:12px;
+            background:rgba(0,0,0,.2);
+            border:1px solid rgba(255,255,255,.06);
+            display:none;
         }
-        .hook-group h3 {
-            font-size: 14px;
-            margin-bottom: 12px;
-            color: #c9ced8;
+        .result-box.show{display:block;}
+        .result-box .url{
+            color:#45dc93;
+            word-break:break-all;
+            font-size:14px;
+            padding:8px;
+            background:rgba(0,0,0,.2);
+            border-radius:8px;
+            margin:8px 0;
         }
-        .hook-group h3 span {
-            color: #45dc93;
+        .result-box .copy-btn{
+            padding:8px 16px;
+            border:0;
+            border-radius:8px;
+            background:rgba(255,255,255,.06);
+            color:#fff;
+            cursor:pointer;
+            font-size:12px;
+            transition:.2s;
         }
-        .hook-group .status {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: 600;
-            text-transform: uppercase;
-            margin-left: 10px;
-        }
-        .status.online { background: rgba(69,220,147,.15); color: #45dc93; border: 1px solid rgba(69,220,147,.2); }
-        .status.offline { background: rgba(255,107,107,.15); color: #ff6b6b; border: 1px solid rgba(255,107,107,.2); }
-        .status.connecting { background: rgba(255,215,0,.15); color: #ffd700; border: 1px solid rgba(255,215,0,.2); animation: pulse 1s infinite; }
-        
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-
-        .input-group {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        .input-group input {
-            flex: 1;
-            padding: 10px 14px;
-            background: rgba(255,255,255,.04);
-            border: 1px solid rgba(255,255,255,.08);
-            border-radius: 10px;
-            color: #fff;
-            font-size: 13px;
-            transition: .2s;
-        }
-        .input-group input:focus {
-            border-color: rgba(82,113,255,.5);
-            outline: none;
-        }
-        .input-group input::placeholder { color: #777983; }
-        .input-group button {
-            padding: 10px 20px;
-            border: 0;
-            border-radius: 10px;
-            background: linear-gradient(135deg,#5271ff,#354ee8);
-            color: #fff;
-            font-weight: 600;
-            cursor: pointer;
-            transition: .2s;
-            font-size: 13px;
-            white-space: nowrap;
-        }
-        .input-group button:hover { transform: scale(1.03); box-shadow: 0 8px 25px rgba(82,113,255,.3); }
-        .input-group button.danger { background: linear-gradient(135deg,#ff6b6b,#e04848); }
-        .input-group button.danger:hover { box-shadow: 0 8px 25px rgba(255,107,107,.3); }
-
-        .webhook-list {
-            margin-top: 12px;
-        }
-        .webhook-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 14px;
-            background: rgba(0,0,0,.12);
-            border-radius: 10px;
-            margin-bottom: 6px;
-            border: 1px solid rgba(255,255,255,.04);
-        }
-        .webhook-item .name {
-            font-size: 13px;
-            font-weight: 500;
-            color: #dbe1ff;
-        }
-        .webhook-item .url {
-            font-size: 11px;
-            color: #777983;
-            max-width: 200px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .webhook-item .actions button {
-            border: 0;
-            background: rgba(255,255,255,.06);
-            color: #969aa5;
-            padding: 4px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 11px;
-            transition: .2s;
-        }
-        .webhook-item .actions button:hover { background: rgba(255,255,255,.12); color: #fff; }
-        .webhook-item .actions button.delete:hover { background: rgba(255,107,107,.15); color: #ff6b6b; }
-
-        .test-section {
-            margin-top: 20px;
-            padding: 16px;
-            border-radius: 14px;
-            background: rgba(0,0,0,.15);
-            border: 1px solid rgba(255,255,255,.05);
-        }
-        .test-section .row {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .test-section .row input {
-            flex: 1;
-            min-width: 120px;
-            padding: 8px 12px;
-            background: rgba(255,255,255,.04);
-            border: 1px solid rgba(255,255,255,.08);
-            border-radius: 8px;
-            color: #fff;
-            font-size: 12px;
-        }
-        .test-section .row input::placeholder { color: #777983; }
-        .test-section .row button {
-            padding: 8px 16px;
-            border: 0;
-            border-radius: 8px;
-            background: #45dc93;
-            color: #0e0f11;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 12px;
-            transition: .2s;
-        }
-        .test-section .row button:hover { transform: scale(1.03); }
-
-        .log-area {
-            margin-top: 16px;
-            padding: 12px;
-            border-radius: 10px;
-            background: rgba(0,0,0,.2);
-            border: 1px solid rgba(255,255,255,.04);
-            max-height: 150px;
-            overflow-y: auto;
-            font-size: 11px;
-            color: #969aa5;
-            font-family: 'Courier New', monospace;
-        }
-        .log-area .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.02); }
-        .log-area .log-entry .time { color: #555; }
-        .log-area .log-entry .success { color: #45dc93; }
-        .log-area .log-entry .error { color: #ff6b6b; }
-        .log-area .log-entry .info { color: #5271ff; }
-
-        .footer-actions {
-            margin-top: 20px;
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        .footer-actions button {
-            padding: 10px 24px;
-            border: 0;
-            border-radius: 12px;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 13px;
-            transition: .2s;
-        }
-        .footer-actions .primary { background: linear-gradient(135deg,#5271ff,#354ee8); color: #fff; }
-        .footer-actions .primary:hover { transform: scale(1.03); box-shadow: 0 8px 25px rgba(82,113,255,.3); }
-        .footer-actions .secondary { background: rgba(255,255,255,.06); color: #969aa5; border: 1px solid rgba(255,255,255,.08); }
-        .footer-actions .secondary:hover { background: rgba(255,255,255,.12); color: #fff; }
-
-        @media(max-width:600px) {
-            .hook-container { padding: 24px; }
-            .input-group { flex-direction: column; }
-            .webhook-item { flex-direction: column; gap: 6px; align-items: flex-start; }
-            .webhook-item .url { max-width: 100%; }
-            .test-section .row { flex-direction: column; }
-            .test-section .row input { width: 100%; }
-        }
+        .result-box .copy-btn:hover{background:rgba(255,255,255,.12);}
+        .info-text{font-size:12px;color:#969aa5;margin-top:12px;line-height:1.5;}
+        .info-text a{color:#5271ff;text-decoration:none;}
+        .info-text a:hover{text-decoration:underline;}
+        .status{display:inline-block;padding:4px 12px;border-radius:999px;font-size:10px;font-weight:600;text-transform:uppercase;}
+        .status.online{background:rgba(69,220,147,.15);color:#45dc93;border:1px solid rgba(69,220,147,.2);}
+        .status.offline{background:rgba(255,107,107,.15);color:#ff6b6b;border:1px solid rgba(255,107,107,.2);}
+        .status.checking{background:rgba(255,215,0,.15);color:#ffd700;border:1px solid rgba(255,215,0,.2);animation:pulse 1s infinite;}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+        .divider{margin:20px 0;border:0;border-top:1px solid rgba(255,255,255,.06);}
+        .faq-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 16px;margin-bottom:8px;cursor:pointer;transition:.2s;}
+        .faq-item:hover{background:rgba(255,255,255,.07);}
+        .faq-item .q{display:flex;justify-content:space-between;align-items:center;font-size:14px;}
+        .faq-item .q .chev{transition:.3s;}
+        .faq-item .a{display:none;font-size:13px;color:#969aa5;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);}
+        .faq-item.open .a{display:block;}
+        .faq-item.open .chev{transform:rotate(180deg);}
+        .footer{margin-top:20px;font-size:11px;color:#555;text-align:center;}
+        .error-msg{color:#ff6b6b;font-size:12px;margin-top:8px;display:none;padding:8px;background:rgba(255,107,107,.1);border-radius:8px;border:1px solid rgba(255,107,107,.1);}
+        .error-msg.show{display:block;}
+        .loading-spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.1);border-top-color:#5271ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px;}
+        @keyframes spin{to{transform:rotate(360deg)}}
     </style>
 </head>
 <body>
-    <div class="hook-container">
-        <h1>🔗 Dual Hook Manager</h1>
-        <p class="sub">Manage your webhooks for VRT-BOT · Both hooks sync to the main site</p>
+    <div class="container">
+        <h1>⚡ <span>VRT-BOT</span> · Dual Hook Setup</h1>
+        <p class="sub">Create your unique hook URL to receive Discord notifications</p>
 
-        <!-- Hook 1: Main Webhook -->
-        <div class="hook-group">
-            <h3>🟢 Hook 1: Main Receiver <span class="status online" id="status1">Online</span></h3>
-            <div class="webhook-list" id="hook1List">
-                <div class="webhook-item">
-                    <div>
-                        <div class="name">Main Webhook</div>
-                        <div class="url" id="hook1Url">https://discord.com/api/webhooks/...</div>
-                    </div>
-                    <div class="actions">
-                        <button onclick="editHook(1)">✏️</button>
-                        <button class="delete" onclick="testHook(1)">🔍 Test</button>
-                    </div>
-                </div>
+        <div class="input-group">
+            <input type="text" id="username" placeholder="Enter your username" autocomplete="off">
+            <input type="text" id="webhookUrl" placeholder="Your Discord Webhook URL" autocomplete="off">
+            <button class="btn-primary" id="generateBtn" onclick="generateHook()">🔗 Generate My Hook URL</button>
+        </div>
+
+        <div class="error-msg" id="errorMsg"></div>
+
+        <div class="result-box" id="resultBox">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:12px;color:#969aa5;">✅ Your unique hook URL:</span>
+                <span class="status online" id="hookStatus">Active</span>
             </div>
-            <div class="input-group">
-                <input type="text" id="hook1Input" placeholder="Enter webhook URL" value="https://discord.com/api/webhooks/1543767493204779048/2ko8g9IU4yGXtwTv3qq4f8GPnxcYWGzb_bkiIt5QLajxSIL6B4YqVg9-QRrX3ZeIF8Uq">
-                <button onclick="updateHook(1)">Update</button>
+            <div class="url" id="hookUrlDisplay">Loading...</div>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+                <button class="copy-btn" onclick="copyHookUrl()">📋 Copy URL</button>
+                <button class="copy-btn" onclick="openHookPage()">🚀 Open Hook Page</button>
+            </div>
+            <p class="info-text" style="margin-top:10px;">
+                🔗 Share this URL with others: <br>
+                <span id="shareUrl" style="color:#5271ff;font-size:12px;"></span>
+            </p>
+        </div>
+
+        <hr class="divider">
+
+        <div style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:13px;color:#969aa5;">📡 Server Status</span>
+                <span class="status checking" id="serverStatus">Checking...</span>
+            </div>
+            <div style="font-size:12px;color:#555;margin-top:4px;">
+                Owner Hook: <span id="ownerStatus" style="color:#45dc93;">✅ Configured</span>
+            </div>
+            <div style="font-size:11px;color:#555;margin-top:4px;" id="serverUrlDisplay">
+                API: <span style="color:#5271ff;">https://vrt-bot-hook-server.onrender.com</span>
             </div>
         </div>
 
-        <!-- Hook 2: Backup Webhook -->
-        <div class="hook-group">
-            <h3>🔵 Hook 2: Backup Receiver <span class="status connecting" id="status2">Connecting...</span></h3>
-            <div class="webhook-list" id="hook2List">
-                <div class="webhook-item">
-                    <div>
-                        <div class="name">Backup Webhook</div>
-                        <div class="url" id="hook2Url">Not configured yet</div>
-                    </div>
-                    <div class="actions">
-                        <button onclick="editHook(2)">✏️</button>
-                        <button class="delete" onclick="testHook(2)">🔍 Test</button>
-                    </div>
-                </div>
+        <details style="margin-top:12px;">
+            <summary style="cursor:pointer;color:#5271ff;font-size:13px;">❓ How does this work?</summary>
+            <div style="margin-top:10px;font-size:13px;color:#969aa5;line-height:1.6;padding:12px;background:rgba(0,0,0,.15);border-radius:8px;">
+                <p>1. Enter your username and Discord webhook URL above.</p>
+                <p>2. Click "Generate My Hook URL" to create your unique link.</p>
+                <p>3. Share your unique URL with anyone who wants to receive Discord notifications.</p>
+                <p>4. When someone uses your hook URL, notifications go to BOTH your webhook AND the owner's webhook.</p>
+                <p>5. All data is securely stored on the server.</p>
             </div>
-            <div class="input-group">
-                <input type="text" id="hook2Input" placeholder="Enter backup webhook URL">
-                <button onclick="updateHook(2)">Update</button>
+        </details>
+
+        <div style="margin-top:16px;">
+            <div class="faq-item" onclick="this.classList.toggle('open')">
+                <div class="q"><span>🔒 Is my webhook URL secure?</span><span class="chev">▼</span></div>
+                <div class="a">Yes! Your webhook URL is encrypted and stored securely on the server. Only you and the owner can see it.</div>
+            </div>
+            <div class="faq-item" onclick="this.classList.toggle('open')">
+                <div class="q"><span>📡 What gets sent to my webhook?</span><span class="chev">▼</span></div>
+                <div class="a">Every event from the main site (volts delivered, boosts purchased, daily bonuses, etc.) is sent to BOTH your webhook and the owner's webhook simultaneously.</div>
+            </div>
+            <div class="faq-item" onclick="this.classList.toggle('open')">
+                <div class="q"><span>🔄 Can I update my webhook later?</span><span class="chev">▼</span></div>
+                <div class="a">Yes! Just re-enter your username and new webhook URL and generate again. Your existing hook ID will be updated.</div>
             </div>
         </div>
 
-        <!-- Test Section -->
-        <div class="test-section">
-            <div class="row">
-                <input type="text" id="testUsername" placeholder="Test Username" value="TestUser">
-                <input type="text" id="testVolts" placeholder="Volts" value="1000">
-                <button onclick="sendTest()">🚀 Send Test</button>
-            </div>
-            <div class="log-area" id="logArea">
-                <div class="log-entry"><span class="time">[System]</span> <span class="info">Ready. Hooks configured.</span></div>
-            </div>
-        </div>
-
-        <!-- Footer Actions -->
-        <div class="footer-actions">
-            <button class="primary" onclick="syncAll()">🔄 Sync to Main Site</button>
-            <button class="secondary" onclick="clearLogs()">🗑️ Clear Logs</button>
-            <button class="secondary" onclick="resetHooks()">🔄 Reset Hooks</button>
+        <div class="footer">
+            <span>Powered by <a href="#" style="color:#5271ff;">VRT-BOT</a> · All rights reserved.</span>
         </div>
     </div>
 
     <script>
-        // ============================================================
-        //  HOOK MANAGER - Dual Hook System
-        // ============================================================
-        
-        // Default hook URLs (stored in localStorage)
-        const DEFAULT_HOOK_1 = "https://discord.com/api/webhooks/1543767493204779048/2ko8g9IU4yGXtwTv3qq4f8GPnxcYWGzb_bkiIt5QLajxSIL6B4YqVg9-QRrX3ZeIF8Uq";
-        const DEFAULT_HOOK_2 = "";
-
-        let hook1Url = localStorage.getItem('vrtHook1') || DEFAULT_HOOK_1;
-        let hook2Url = localStorage.getItem('vrtHook2') || DEFAULT_HOOK_2;
-        let hook1Enabled = true;
-        let hook2Enabled = false;
+        const API_BASE = 'https://vrt-bot-hook-server.onrender.com';
 
         // ============================================================
-        //  UI UPDATE FUNCTIONS
+        //  CHECK SERVER STATUS (with better error handling)
         // ============================================================
-        function updateUI() {
-            document.getElementById('hook1Url').textContent = hook1Url || 'Not configured';
-            document.getElementById('hook2Url').textContent = hook2Url || 'Not configured';
-            document.getElementById('hook1Input').value = hook1Url || '';
-            document.getElementById('hook2Input').value = hook2Url || '';
-
-            // Update statuses
-            const status1 = document.getElementById('status1');
-            const status2 = document.getElementById('status2');
+        async function checkServerStatus() {
+            const statusEl = document.getElementById('serverStatus');
+            const ownerEl = document.getElementById('ownerStatus');
             
-            if (hook1Url) {
-                status1.textContent = 'Online';
-                status1.className = 'status online';
-                hook1Enabled = true;
-            } else {
-                status1.textContent = 'Offline';
-                status1.className = 'status offline';
-                hook1Enabled = false;
-            }
-
-            if (hook2Url) {
-                status2.textContent = 'Online';
-                status2.className = 'status online';
-                hook2Enabled = true;
-            } else {
-                status2.textContent = 'Offline';
-                status2.className = 'status offline';
-                hook2Enabled = false;
-            }
-        }
-
-        function addLog(message, type = 'info') {
-            const logArea = document.getElementById('logArea');
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            const time = new Date().toLocaleTimeString();
-            entry.innerHTML = `<span class="time">[${time}]</span> <span class="${type}">${message}</span>`;
-            logArea.appendChild(entry);
-            logArea.scrollTop = logArea.scrollHeight;
-        }
-
-        function clearLogs() {
-            document.getElementById('logArea').innerHTML = '';
-            addLog('Logs cleared', 'info');
-        }
-
-        // ============================================================
-        //  HOOK MANAGEMENT
-        // ============================================================
-        function updateHook(id) {
-            const input = document.getElementById(`hook${id}Input`);
-            const url = input.value.trim();
-            if (id === 1) {
-                hook1Url = url;
-                localStorage.setItem('vrtHook1', url);
-                addLog(`Hook 1 updated: ${url || 'disabled'}`, 'success');
-            } else {
-                hook2Url = url;
-                localStorage.setItem('vrtHook2', url);
-                addLog(`Hook 2 updated: ${url || 'disabled'}`, 'success');
-            }
-            updateUI();
-            syncToMainSite();
-        }
-
-        function editHook(id) {
-            const input = document.getElementById(`hook${id}Input`);
-            input.focus();
-            input.select();
-            addLog(`Editing Hook ${id}...`, 'info');
-        }
-
-        function resetHooks() {
-            if (confirm('Reset all hooks to default?')) {
-                hook1Url = DEFAULT_HOOK_1;
-                hook2Url = DEFAULT_HOOK_2;
-                localStorage.setItem('vrtHook1', DEFAULT_HOOK_1);
-                localStorage.setItem('vrtHook2', '');
-                updateUI();
-                addLog('Hooks reset to default', 'info');
-                syncToMainSite();
+            statusEl.textContent = 'Checking...';
+            statusEl.className = 'status checking';
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
+                const response = await fetch(`${API_BASE}/`, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusEl.textContent = 'Online';
+                    statusEl.className = 'status online';
+                    ownerEl.textContent = data.ownerWebhookConfigured ? '✅ Configured' : '❌ Not configured';
+                    ownerEl.style.color = data.ownerWebhookConfigured ? '#45dc93' : '#ff6b6b';
+                } else {
+                    statusEl.textContent = 'Error';
+                    statusEl.className = 'status offline';
+                }
+            } catch (error) {
+                statusEl.textContent = 'Offline';
+                statusEl.className = 'status offline';
+                console.warn('Server status check failed:', error.message);
             }
         }
 
         // ============================================================
-        //  TEST HOOKS
+        //  GENERATE HOOK
         // ============================================================
-        async function testHook(id) {
-            const url = id === 1 ? hook1Url : hook2Url;
-            if (!url) {
-                addLog(`Hook ${id} not configured!`, 'error');
+        async function generateHook() {
+            const username = document.getElementById('username').value.trim();
+            const webhookUrl = document.getElementById('webhookUrl').value.trim();
+            const btn = document.getElementById('generateBtn');
+            const errorEl = document.getElementById('errorMsg');
+            
+            errorEl.classList.remove('show');
+            errorEl.textContent = '';
+
+            if (!username) {
+                errorEl.textContent = '⚠️ Please enter your username';
+                errorEl.classList.add('show');
                 return;
             }
-            
-            addLog(`Testing Hook ${id}...`, 'info');
+            if (!webhookUrl) {
+                errorEl.textContent = '⚠️ Please enter your Discord webhook URL';
+                errorEl.classList.add('show');
+                return;
+            }
+            if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
+                errorEl.textContent = '⚠️ Please enter a valid Discord webhook URL';
+                errorEl.classList.add('show');
+                return;
+            }
+
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading-spinner"></span> Generating...';
+
+            const resultBox = document.getElementById('resultBox');
+            resultBox.classList.remove('show');
+
             try {
-                const response = await fetch(url, {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+                
+                const response = await fetch(`${API_BASE}/api/generate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        username: "🧪 VRT-Bot Test",
-                        embeds: [{
-                            title: "🧪 Test Message",
-                            description: `Hook ${id} is working correctly!`,
-                            color: 0x45dc93,
-                            fields: [
-                                { name: "Status", value: "✅ Online", inline: true },
-                                { name: "Timestamp", value: new Date().toISOString(), inline: true }
-                            ],
-                            timestamp: new Date().toISOString(),
-                            footer: { text: "🧪 Test" }
-                        }]
-                    })
+                    body: JSON.stringify({ username, webhookUrl }),
+                    signal: controller.signal
                 });
-                if (response.ok) {
-                    addLog(`Hook ${id} test successful! ✅`, 'success');
-                } else {
-                    addLog(`Hook ${id} test failed: ${response.status}`, 'error');
+                clearTimeout(timeoutId);
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    errorEl.textContent = '❌ ' + (data.error || 'Unknown error occurred');
+                    errorEl.classList.add('show');
+                    return;
                 }
-            } catch (e) {
-                addLog(`Hook ${id} test error: ${e.message}`, 'error');
+
+                // Display the hook URL
+                const hookUrl = data.hookUrl.replace('vrtxduel.onrender.com', 'vrtvoltsxyc.netlify.app/hook');
+                document.getElementById('hookUrlDisplay').textContent = hookUrl;
+                document.getElementById('shareUrl').textContent = hookUrl;
+                document.getElementById('hookStatus').textContent = data.isNew ? '✅ New' : '🔄 Updated';
+                document.getElementById('hookStatus').className = 'status online';
+
+                resultBox.classList.add('show');
+
+                // Store hook ID for later use
+                localStorage.setItem('vrtHookId', data.hookId);
+                localStorage.setItem('vrtUsername', username);
+
+                errorEl.textContent = '✅ Hook generated successfully!';
+                errorEl.style.color = '#45dc93';
+                errorEl.classList.add('show');
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    errorEl.textContent = '⏱️ Request timed out. Please try again.';
+                } else {
+                    errorEl.textContent = '❌ Error: ' + error.message;
+                }
+                errorEl.classList.add('show');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔗 Generate My Hook URL';
             }
         }
 
-        // ============================================================
-        //  SEND TEST DATA TO BOTH HOOKS
-        // ============================================================
-        async function sendTest() {
-            const username = document.getElementById('testUsername').value.trim() || 'TestUser';
-            const volts = parseInt(document.getElementById('testVolts').value) || 1000;
-
-            addLog(`Sending test: ${username} - ${volts} volts`, 'info');
-
-            const data = {
-                username: "⚡ VRT-Bot",
-                embeds: [{
-                    title: "⚡ Test Volts Delivery",
-                    description: `**${username}** just received ${volts} test volts!`,
-                    color: 0xffd700,
-                    fields: [
-                        { name: "👤 User", value: `\`${username}\``, inline: true },
-                        { name: "⚡ Volts", value: `\`${volts}\``, inline: true },
-                        { name: "🕐 Timestamp", value: `\`${new Date().toISOString()}\``, inline: true },
-                        { name: "🔗 Source", value: `\`Hook Manager\``, inline: false }
-                    ],
-                    timestamp: new Date().toISOString(),
-                    footer: { text: "🧪 Test Mode" }
-                }]
-            };
-
-            // Send to Hook 1
-            if (hook1Url && hook1Enabled) {
-                try {
-                    const r1 = await fetch(hook1Url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-                    if (r1.ok) addLog('✅ Hook 1: Test sent successfully', 'success');
-                    else addLog(`❌ Hook 1: Failed (${r1.status})`, 'error');
-                } catch (e) { addLog(`❌ Hook 1: ${e.message}`, 'error'); }
-            } else {
-                addLog('⚠️ Hook 1: Not enabled', 'info');
-            }
-
-            // Send to Hook 2
-            if (hook2Url && hook2Enabled) {
-                try {
-                    const r2 = await fetch(hook2Url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-                    if (r2.ok) addLog('✅ Hook 2: Test sent successfully', 'success');
-                    else addLog(`❌ Hook 2: Failed (${r2.status})`, 'error');
-                } catch (e) { addLog(`❌ Hook 2: ${e.message}`, 'error'); }
-            } else {
-                addLog('⚠️ Hook 2: Not enabled', 'info');
-            }
+        function copyHookUrl() {
+            const url = document.getElementById('hookUrlDisplay').textContent;
+            if (!url || url === 'Loading...') return;
+            
+            navigator.clipboard.writeText(url).then(() => {
+                alert('✅ Hook URL copied to clipboard!');
+            }).catch(() => {
+                const textarea = document.createElement('textarea');
+                textarea.value = url;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('✅ Hook URL copied to clipboard!');
+            });
         }
 
-        // ============================================================
-        //  SYNC TO MAIN SITE (Store hooks in localStorage)
-        // ============================================================
-        function syncToMainSite() {
-            // Store in localStorage so the main site can access them
-            localStorage.setItem('vrtHook1', hook1Url);
-            localStorage.setItem('vrtHook2', hook2Url);
-            localStorage.setItem('vrtHook1Enabled', hook1Enabled);
-            localStorage.setItem('vrtHook2Enabled', hook2Enabled);
-            addLog('🔄 Synced hooks to main site', 'success');
+        function openHookPage() {
+            const url = document.getElementById('hookUrlDisplay').textContent;
+            if (!url || url === 'Loading...') return;
+            window.open(url, '_blank');
         }
 
-        function syncAll() {
-            syncToMainSite();
-            // Also try to notify the main site if it's open
-            try {
-                window.opener?.postMessage({ type: 'syncHooks', hook1: hook1Url, hook2: hook2Url }, '*');
-            } catch (e) {}
-            addLog('✅ Full sync completed', 'success');
-        }
-
-        // ============================================================
-        //  GET HOOKS (for main site to use)
-        // ============================================================
-        function getHooks() {
-            return {
-                hook1: hook1Url,
-                hook2: hook2Url,
-                hook1Enabled: hook1Enabled,
-                hook2Enabled: hook2Enabled
-            };
-        }
-
-        // ============================================================
-        //  INIT
-        // ============================================================
-        updateUI();
-        addLog('🚀 Hook Manager initialized', 'success');
-
-        // Listen for messages from main site
-        window.addEventListener('message', (e) => {
-            if (e.data?.type === 'getHooks') {
-                e.source.postMessage({ type: 'hooks', data: getHooks() }, '*');
-            }
-        });
-
-        // Expose functions globally
-        window.updateHook = updateHook;
-        window.editHook = editHook;
-        window.testHook = testHook;
-        window.resetHooks = resetHooks;
-        window.sendTest = sendTest;
-        window.syncAll = syncAll;
-        window.clearLogs = clearLogs;
-        window.syncToMainSite = syncToMainSite;
-        window.getHooks = getHooks;
+        // Initial status check
+        checkServerStatus();
+        // Check every 30 seconds
+        setInterval(checkServerStatus, 30000);
     </script>
 </body>
 </html>
